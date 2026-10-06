@@ -1,0 +1,28 @@
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: jagrat
+      POSTGRES_PASSWORD: jagrat
+      POSTGRES_DB: jagrat
+    ports:
+      - "5432:5432"
+    volumes:
+      - jagrat_pgdata:/var/lib/postgresql/data
+
+  api:
+    build: .
+    environment:
+      DATABASE_URL: postgresql+psycopg://jagrat:jagrat@db:5432/jagrat
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.8-flash}
+      GEMINI_FAST_MODEL: ${GEMINI_FAST_MODEL:-gemini-3.1-flash-lite}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:5173}
+      DEMO_USER_ID: ${DEMO_USER_ID:-demo}
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+
+volumes:
+  jagrat_pgdata:

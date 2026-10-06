@@ -1,0 +1,2 @@
+id,text,themes,emotions,challenges,keywords,source_type,source_title,source_volume,source_chapter,source_page,source_section,source_url,context
+TEMPLATE_ID,"Paste the full organiser-provided passage here. Keep paragraph breaks inside this quoted CSV field.",self_belief|resilience,self_doubt|fear,failure|self_doubt,effort|strength,speech,"Organiser-provided source title",,,,"Relevant section",,"Optional surrounding context"
