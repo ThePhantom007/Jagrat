@@ -1,4 +1,5 @@
 import json
+import logging
 from typing import TypeVar
 
 from pydantic import BaseModel
@@ -6,6 +7,7 @@ from pydantic import BaseModel
 from app.config import get_settings
 
 T = TypeVar("T", bound=BaseModel)
+logger = logging.getLogger("jagrat.gemini")
 
 
 class GeminiUnavailableError(RuntimeError):
@@ -33,7 +35,14 @@ class GeminiService:
         if not settings.gemini_api_key:
             raise GeminiUnavailableError("GEMINI_API_KEY is not configured")
         try:
-            self.client = genai.Client(api_key=settings.gemini_api_key)
+            try:
+                from google.genai import types
+
+                # A hard client-side timeout so a slow/stuck model call fails fast instead of hanging the request.
+                http_options = types.HttpOptions(timeout=settings.gemini_timeout_seconds * 1000)
+                self.client = genai.Client(api_key=settings.gemini_api_key, http_options=http_options)
+            except (ImportError, AttributeError, TypeError):
+                self.client = genai.Client(api_key=settings.gemini_api_key)
         except Exception as exc:
             raise GeminiUnavailableError("Gemini client could not be initialized") from exc
         self.model = settings.gemini_model
@@ -57,6 +66,8 @@ class GeminiService:
                 store=False,
             )
         except Exception as exc:
+            # Log the real cause server-side (never returned to the client) so quota/model/schema errors are diagnosable.
+            logger.warning("Gemini request failed (model=%s): %s: %s", model, type(exc).__name__, str(exc)[:600])
             # Do not leak provider internals/API details to the client.
             raise GeminiUnavailableError("Gemini request failed; check GEMINI_API_KEY and free-tier quota.") from exc
 

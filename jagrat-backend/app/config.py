@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     # Both defaults are available on the Gemini Developer API's standard free tier.
     gemini_model: str = "gemini-3.8-flash"
     gemini_fast_model: str = "gemini-3.1-flash-lite"
+    gemini_timeout_seconds: int = 60
     cors_origins: Annotated[list[str], NoDecode] = ["http://localhost:3000", "http://localhost:5173"]
     demo_user_id: str = "demo"
     max_conversation_messages: int = 12
