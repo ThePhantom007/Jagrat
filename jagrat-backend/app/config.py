@@ -1,7 +1,8 @@
 from functools import lru_cache
+from typing import Annotated
 
 from pydantic import field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -12,15 +13,17 @@ class Settings(BaseSettings):
     # Both defaults are available on the Gemini Developer API's standard free tier.
     gemini_model: str = "gemini-3.8-flash"
     gemini_fast_model: str = "gemini-3.1-flash-lite"
-    cors_origins: list[str] = ["http://localhost:3000", "http://localhost:5173"]
+    cors_origins: Annotated[list[str], NoDecode] = ["http://localhost:3000", "http://localhost:5173"]
     demo_user_id: str = "demo"
     max_conversation_messages: int = 12
     journal_memory_limit: int = 5
     teaching_candidate_limit: int = 7
     max_candidate_excerpt_chars: int = 1800
-    seed_demo_on_startup: bool = True
+    seed_demo_on_startup: bool = False
     auto_ingest_teachings: bool = True
     teachings_json_path: str = "data/articles.json"
+    demo_mode: bool = False
+    allow_legacy_profile_id: bool = False
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

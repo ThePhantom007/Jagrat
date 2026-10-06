@@ -1,13 +1,14 @@
 [
   {
-    "title": "EXAMPLE SOURCE TITLE",
+    "slug": "1-1-1-response-to-welcome",
+    "title": "1.1.1 RESPONSE TO WELCOME",
     "volume": "VOLUME 1",
+    "url": "https://englishbooks.rkmm.org/s/tsv/m/the-complete-works-of-swami-vivekananda/a/1-1-1-response-to-welcome",
     "paragraphs": [
-      "Example paragraph one.",
-      "Example paragraph two."
+      "At the World’s Parliament of Religions, Chicago 11th September, 1893...",
+      "Sisters and Brothers of America,..."
     ],
-    "source_type": "source_document",
-    "source_url": null,
-    "context": null
+    "theme": "resilience",
+    "emotion": null
   }
 ]

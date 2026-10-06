@@ -8,6 +8,14 @@ from app.config import get_settings
 T = TypeVar("T", bound=BaseModel)
 
 
+class GeminiUnavailableError(RuntimeError):
+    """Provider/configuration/quota failure that should be surfaced as HTTP 503."""
+
+
+class GeminiOutputError(RuntimeError):
+    """Provider returned malformed structured output."""
+
+
 class GeminiService:
     """Thin wrapper around the official Gemini Interactions API.
 
@@ -16,12 +24,18 @@ class GeminiService:
     """
 
     def __init__(self) -> None:
-        from google import genai
+        try:
+            from google import genai
+        except Exception as exc:
+            raise GeminiUnavailableError("Gemini client is not installed") from exc
 
         settings = get_settings()
         if not settings.gemini_api_key:
-            raise RuntimeError("GEMINI_API_KEY is not configured")
-        self.client = genai.Client(api_key=settings.gemini_api_key)
+            raise GeminiUnavailableError("GEMINI_API_KEY is not configured")
+        try:
+            self.client = genai.Client(api_key=settings.gemini_api_key)
+        except Exception as exc:
+            raise GeminiUnavailableError("Gemini client could not be initialized") from exc
         self.model = settings.gemini_model
         self.fast_model = settings.gemini_fast_model
 
@@ -44,15 +58,15 @@ class GeminiService:
             )
         except Exception as exc:
             # Do not leak provider internals/API details to the client.
-            raise RuntimeError("Gemini request failed; check GEMINI_API_KEY and free-tier quota.") from exc
+            raise GeminiUnavailableError("Gemini request failed; check GEMINI_API_KEY and free-tier quota.") from exc
 
         raw = interaction.output_text or ""
         if not raw:
-            raise RuntimeError("Gemini returned an empty response")
+            raise GeminiOutputError("Gemini returned an empty response")
         try:
             return schema.model_validate_json(raw)
         except Exception as exc:
-            raise RuntimeError("Gemini returned output that did not match the expected schema.") from exc
+            raise GeminiOutputError("Gemini returned output that did not match the expected schema.") from exc
 
 
 def compact_json(value) -> str:

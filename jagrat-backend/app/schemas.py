@@ -4,9 +4,12 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 
-class ProfileUpsertRequest(BaseModel):
+class ProfileCreateRequest(BaseModel):
     display_name: str = Field(min_length=1, max_length=120)
-    answers: dict = Field(default_factory=dict)
+
+
+class ProfileUpdateRequest(BaseModel):
+    display_name: str = Field(min_length=1, max_length=120)
 
 
 class ProfileResponse(BaseModel):
@@ -16,6 +19,10 @@ class ProfileResponse(BaseModel):
     answers: dict
     created_at: datetime
     updated_at: datetime
+
+
+class ProfileCreateResponse(ProfileResponse):
+    access_token: str
 
 
 class OnboardingRequest(BaseModel):
@@ -107,6 +114,7 @@ class JournalResponse(BaseModel):
     id: str
     text: str
     risk_flag: bool
+    analysis_status: Literal["ready", "pending"] = "ready"
     created_at: datetime
     insight: JournalInsightResponse | None
 
@@ -133,15 +141,6 @@ class MentorGeneration(BaseModel):
     reflection_question: str = Field(min_length=1, max_length=900)
     challenge: ChallengePayload
     action: ActionPayload
-    # Internal trace used to ensure all six onboarding dimensions were considered.
-    personalization_trace: list[Literal[
-        "profession",
-        "age",
-        "matters_most",
-        "troubling_most",
-        "problem_approach",
-        "improve",
-    ]] = Field(min_length=6, max_length=6)
 
 
 class MentorRequest(BaseModel):
@@ -201,6 +200,35 @@ class TrustPanel(BaseModel):
     quote_authority: str
     rendered_from_backend: bool
     ai_written_sections: list[str]
+    source_note: str | None = None
+
+
+class VivekanandaVsMeRequest(BaseModel):
+    view: str = Field(min_length=1, max_length=12000)
+
+
+class VivekanandaVsMeGeneration(BaseModel):
+    teaching: TeachingSelection
+    where_they_align: str = Field(min_length=1, max_length=1200)
+    where_they_differ: str = Field(min_length=1, max_length=1500)
+    what_to_examine: str = Field(min_length=1, max_length=1200)
+    questions_for_me: list[str] = Field(min_length=1, max_length=3)
+    experiment: str = Field(min_length=1, max_length=900)
+    conclusion: str = Field(min_length=1, max_length=1200)
+
+
+class VivekanandaVsMeResponse(BaseModel):
+    status: Literal["ok"] = "ok"
+    comparison_id: str
+    my_view: str
+    teaching: TeachingResponse | None
+    where_they_align: str
+    where_they_differ: str
+    what_to_examine: str
+    questions_for_me: list[str]
+    experiment: str
+    conclusion: str
+    trust: TrustPanel
 
 
 class SafetyResponse(BaseModel):

@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_profile
 from app.db.session import get_db
-from app.models import ActionFollowUp, ActionItem, Conversation, JournalEntry, Profile
+from app.models import ActionFollowUp, ActionItem, Conversation, JournalEntry, Profile, VivekanandaComparison, Teaching
 from app.schemas import HistoryItem, HistoryResponse
 
 router = APIRouter(prefix="/history", tags=["history"] )
@@ -35,6 +35,14 @@ def history(limit: int = 50, item_type: str | None = None, q: str | None = None,
             select(ActionItem)
             .where(ActionItem.profile_id == profile.id)
             .order_by(ActionItem.created_at.desc())
+            .limit(limit)
+        ).all()
+    )
+    comparisons = list(
+        db.scalars(
+            select(VivekanandaComparison)
+            .where(VivekanandaComparison.profile_id == profile.id)
+            .order_by(VivekanandaComparison.created_at.desc())
             .limit(limit)
         ).all()
     )
@@ -101,15 +109,36 @@ def history(limit: int = 50, item_type: str | None = None, q: str | None = None,
             )
         )
 
+    for comparison in comparisons:
+        selected = db.get(Teaching, comparison.selected_teaching_id) if comparison.selected_teaching_id else None
+        result = comparison.result_json or {}
+        items.append(
+            HistoryItem(
+                id=comparison.id,
+                type="vivekananda_vs_me",
+                created_at=comparison.created_at,
+                title="Vivekananda vs Me",
+                summary=comparison.user_view[:280],
+                data={
+                    "my_view": comparison.user_view,
+                    "problem_analysis": comparison.problem_analysis,
+                    "selected_teaching_id": comparison.selected_teaching_id,
+                    "teaching_title": selected.source_title if selected else None,
+                    "result": result,
+                    "risk_flag": comparison.risk_flag,
+                },
+            )
+        )
+
     items.sort(key=lambda item: item.created_at, reverse=True)
 
     normalized_q = q.strip().lower() if q else None
     normalized_theme = theme.strip().lower().replace("-", "_") if theme else None
     if item_type:
-        allowed = {"journal", "mentor", "action"}
+        allowed = {"journal", "mentor", "action", "vivekananda_vs_me"}
         if item_type not in allowed:
             from fastapi import HTTPException
-            raise HTTPException(status_code=422, detail="item_type must be journal, mentor, or action")
+            raise HTTPException(status_code=422, detail="item_type must be journal, mentor, action, or vivekananda_vs_me")
         items = [item for item in items if item.type == item_type]
     if normalized_q:
         items = [item for item in items if normalized_q in (item.title + " " + item.summary + " " + str(item.data)).lower()]

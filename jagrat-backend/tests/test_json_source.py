@@ -1,6 +1,8 @@
 from pathlib import Path
 import json
 
+from sqlalchemy import select
+
 from scripts.ingest_articles import load_rows, read_articles
 from app.services.context import build_retrieval_excerpt
 
@@ -37,3 +39,29 @@ def test_source_audit_detects_duplicates(tmp_path):
     assert stats["input_records"] == 3
     assert stats["unique_articles"] == 2
     assert stats["duplicates_removed"] == 1
+
+
+def test_import_sync_preserves_saved_teaching(monkeypatch, db_session, tmp_path):
+    from app.models import SavedTeaching, Teaching
+    import scripts.ingest_articles as ingest
+    first = tmp_path / "first.json"
+    second = tmp_path / "second.json"
+    first.write_text(json.dumps([{"title":"A","volume":"V1","paragraphs":["One teaching about fear and courage."]}]), encoding="utf-8")
+    second.write_text(json.dumps([
+        {"title":"A","volume":"V1","paragraphs":["One teaching about fear and courage."]},
+        {"title":"B","volume":"V1","paragraphs":["Another teaching about discipline."]},
+    ]), encoding="utf-8")
+
+    monkeypatch.setattr(ingest, "init_db", lambda: None)
+    monkeypatch.setattr(ingest, "SessionLocal", lambda: db_session)
+    ingest.import_json(first)
+    original = db_session.scalar(select(Teaching).where(Teaching.is_active.is_(True)))
+    original_id = original.id
+    db_session.add(SavedTeaching(profile_id="demo", teaching_id=original_id))
+    db_session.commit()
+    ingest.import_json(second)
+
+    saved = db_session.scalar(select(SavedTeaching).where(SavedTeaching.teaching_id == original_id))
+    assert saved is not None
+    assert db_session.get(Teaching, original_id) is not None
+    assert len(db_session.query(Teaching).all()) == 2

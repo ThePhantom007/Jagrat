@@ -1,90 +1,17 @@
-from datetime import datetime, timedelta, timezone
 from pathlib import Path
+import hashlib
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.models import InteractionRecord, JournalEntry, JournalInsight, Profile, ReflectionGoal, Teaching, WeeklyCheckIn
-
-DEMO_ENTRIES = [
-    ("I studied for an exam today, but I kept comparing my progress with my friends.", ["comparison", "academic_pressure"], ["fear", "self_doubt"]),
-    ("I made a study plan and followed most of it. I still worried that one bad result means I am not capable.", ["failure", "self_belief"], ["fear"]),
-    ("I avoided one difficult topic because I was afraid of getting it wrong.", ["fear", "academic_pressure"], ["self_doubt"]),
-    ("I asked a friend for help instead of pretending I understood everything.", ["self_belief", "resilience"], ["uncertainty"]),
-    ("I finished the questions I had been postponing and felt more in control.", ["discipline", "resilience"], ["relief"]),
-    ("I caught myself comparing marks again, then focused on what I could improve next.", ["comparison", "failure"], ["self_doubt"]),
-    ("I want next week to be about consistency rather than proving myself in one exam.", ["discipline", "self_belief"], ["hope"]),
-]
+from app.models import Teaching
 
 
-def seed_demo(db: Session) -> None:
-    settings = get_settings()
-    profile = db.get(Profile, settings.demo_user_id)
-    if profile is None:
-        profile = Profile(
-            id=settings.demo_user_id,
-            display_name="Demo User",
-            answers={
-                "profession": "student",
-                "profession_other": None,
-                "age": 20,
-                "matters_most": "studies",
-                "troubling_most": "confidence",
-                "troubling_other": None,
-                "problem_approach": "overthink",
-                "improve": "discipline",
-                "improve_other": None,
-            },
-        )
-        db.add(profile)
-        db.flush()
-
-    has_goal = db.scalar(select(ReflectionGoal.id).where(ReflectionGoal.profile_id == profile.id).limit(1))
-    if has_goal is None:
-        db.add(ReflectionGoal(
-            profile_id=profile.id,
-            goal_key="discipline",
-            goal_text="Build more consistent study habits without overthinking every result.",
-        ))
-        db.flush()
-
-    has_journal = db.scalar(select(JournalEntry.id).where(JournalEntry.profile_id == profile.id).limit(1))
-    if has_journal is not None:
-        return
-
-    now = datetime.now(timezone.utc)
-    for idx, (text, themes, emotions) in enumerate(DEMO_ENTRIES):
-        created = now - timedelta(days=6 - idx)
-        entry = JournalEntry(profile_id=profile.id, text=text, created_at=created)
-        db.add(entry)
-        db.flush()
-        db.add(
-            JournalInsight(
-                profile_id=profile.id,
-                journal_entry_id=entry.id,
-                observation="Wrote about " + ", ".join(t.replace("_", " ") for t in themes) + ".",
-                tags=themes,
-                themes=themes,
-                emotions=emotions,
-                created_at=created,
-            )
-        )
-        db.add(InteractionRecord(profile_id=profile.id, themes=themes, created_at=created))
-
-    week_start = now - timedelta(days=now.weekday(), hours=now.hour, minutes=now.minute, seconds=now.second, microseconds=now.microsecond)
-    db.add(
-        WeeklyCheckIn(
-            profile_id=profile.id,
-            week_start=week_start,
-            self_belief=6,
-            fear=5,
-            discipline=7,
-            clarity=6,
-            resilience=6,
-            note="Trying to focus on consistency rather than comparison.",
-        )
-    )
+def _active_db_fingerprint(db) -> str:
+    rows = list(db.execute(select(Teaching.id, Teaching.content_sha256).where(Teaching.is_active.is_(True))).all())
+    parts = sorted(f"{row[0]}:{row[1]}" for row in rows)
+    payload = "\n".join(parts) + ("\n" if parts else "")
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 def bootstrap() -> None:
@@ -93,22 +20,25 @@ def bootstrap() -> None:
 
     settings = get_settings()
     init_db()
-    if settings.environment == "test":
-        return
-
     json_path = Path(settings.teachings_json_path)
+
     if settings.auto_ingest_teachings and json_path.exists():
         from scripts.ingest_articles import dataset_fingerprint, import_json
         expected_fingerprint = dataset_fingerprint(json_path)
-        import hashlib
         with SessionLocal() as db:
-            rows = list(db.execute(select(Teaching.id, Teaching.content_sha256)).all())
-            db_fingerprint_parts = sorted(f"{row[0]}:{row[1]}" for row in rows)
-            actual_digest = hashlib.sha256(("\n".join(db_fingerprint_parts) + ("\n" if db_fingerprint_parts else "")).encode("utf-8")).hexdigest()
+            actual_digest = _active_db_fingerprint(db)
         if actual_digest != expected_fingerprint:
             import_json(json_path, replace=True)
 
-    if settings.seed_demo_on_startup:
+        # Warm the cached inverted index once at startup, rather than on the first user request.
+        with SessionLocal() as db:
+            from app.services.retrieval import warm_teaching_index
+            warm_teaching_index(db)
+
+    # Demo data is opt-in and intended only for local/dev demonstrations.
+    if settings.seed_demo_on_startup and settings.environment != "production":
+        from app.db.session import SessionLocal
+        from scripts.seed_demo import seed_demo
         with SessionLocal() as db:
             seed_demo(db)
             db.commit()

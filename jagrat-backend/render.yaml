@@ -20,5 +20,11 @@ services:
         sync: false
       - key: TEACHINGS_JSON_PATH
         value: data/articles.json
-      - key: DEMO_USER_ID
-        value: demo
+      - key: DEMO_MODE
+        value: "false"
+      - key: ALLOW_LEGACY_PROFILE_ID
+        value: "false"
+      - key: SEED_DEMO_ON_STARTUP
+        value: "false"
+      - key: AUTO_INGEST_TEACHINGS
+        value: "true"

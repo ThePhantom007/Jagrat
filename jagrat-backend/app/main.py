@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import get_settings
+from app.api import vs_me
 from app.api import health, profile, journal, mentor, actions, growth, reports, teachings, history, journey, honesty, features
 
 
@@ -23,5 +24,5 @@ app.add_middleware(
 )
 
 app.include_router(health.router)
-for router in [profile.router, journal.router, features.router, mentor.router, actions.router, growth.router, reports.router, teachings.router, history.router, journey.router, honesty.router]:
+for router in [profile.router, journal.router, features.router, mentor.router, vs_me.router, actions.router, growth.router, reports.router, teachings.router, history.router, journey.router, honesty.router]:
     app.include_router(router, prefix="/api")

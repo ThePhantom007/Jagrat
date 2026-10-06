@@ -20,6 +20,9 @@ def weekly_report(date_value: str, db: Session = Depends(get_db), profile: Profi
         start = week_start(parsed)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail="date must be ISO format, e.g. 2026-10-05") from exc
-    row = generate_report(db, profile.id, GeminiService(), start)
+    try:
+        row = generate_report(db, profile.id, GeminiService(), start)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail="Weekly report is temporarily unavailable because Gemini could not complete the generation.") from exc
     payload = row.report_json
     return WeeklyReportResponse(**payload, week_start=row.week_start, created_at=row.created_at, lifetime_factor_trends=lifetime_factor_trends(db, profile.id), day_streak=calculate_day_streak(db, profile.id), total_reflections=total_reflections(db, profile.id), factor_cards=current_factor_cards(db, profile.id), weekly_anchor=_weekly_anchor(db, profile.id, start))

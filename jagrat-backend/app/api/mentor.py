@@ -7,7 +7,7 @@ from app.db.session import get_db
 from app.models import ChallengeRound, Conversation, Message, Profile
 from app.schemas import ChallengeRequest, ChallengeResponse, MentorRequest, MentorResponse, SafetyResponse, MentorContinueRequest, MentorSessionSummary
 from app.services.gemini import GeminiService
-from app.services.mentor import MentorService, SourceGuardError
+from app.services.mentor import ChallengeLimitError, MentorService, SourceGuardError
 from app.services.context import onboarding_complete
 from app.services.safety import local_risk_check, safety_message
 
@@ -32,20 +32,12 @@ def mentor(payload: MentorRequest, db: Session = Depends(get_db), profile: Profi
     if not onboarding_complete(profile):
         raise HTTPException(status_code=409, detail="Complete all six onboarding questions before starting a mentor reflection")
 
-    svc = service()
-    assessment = svc.assess_text(message)  # combines safety + problem classification in one Gemini call
-    if is_blocking(assessment.risk.risk_level):
-        return safety_message()
-
-    # A new reflection creates a persisted conversation that can be resumed later.
     try:
-        return svc.create_turn(db, profile.id, message, assessment=assessment)
-    except LookupError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return service().create_turn(db, profile.id, message)
     except SourceGuardError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        raise HTTPException(status_code=503, detail="Jagrat could not complete the reflection because Gemini is temporarily unavailable. Your request was saved; retry the reflection.") from exc
 
 
 @router.post("/{conversation_id}/continue", response_model=MentorResponse | SafetyResponse)
@@ -75,6 +67,20 @@ def continue_reflection(conversation_id: str, payload: MentorContinueRequest, db
         if str(exc) == "SAFETY_TRIGGERED":
             return safety_message()
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.post("/{conversation_id}/retry", response_model=MentorResponse | SafetyResponse)
+def retry_reflection(conversation_id: str, db: Session = Depends(get_db), profile: Profile = Depends(get_profile)):
+    try:
+        return service().retry_turn(db, profile.id, conversation_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except SourceGuardError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        if str(exc) == "SAFETY_TRIGGERED":
+            return safety_message()
+        raise HTTPException(status_code=503, detail="Gemini is temporarily unavailable; retry the reflection later.") from exc
 
 
 @router.get("/sessions", response_model=list[MentorSessionSummary])
@@ -134,23 +140,18 @@ def challenge(conversation_id: str, payload: ChallengeRequest, db: Session = Dep
             db.commit()
         return safety_message()
 
-    svc = service()
-    assessment = svc.assess_text(response)  # one call: safety + lightweight classification
-    if is_blocking(assessment.risk.risk_level):
-        conversation = db.scalar(select(Conversation).where(Conversation.id == conversation_id, Conversation.profile_id == profile.id))
-        if conversation:
-            conversation.risk_flag = True
-            db.commit()
-        return safety_message()
-
     try:
-        return svc.continue_challenge(db, profile.id, conversation_id, response, assessment=assessment)
+        return service().continue_challenge(db, profile.id, conversation_id, response)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ChallengeLimitError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except SourceGuardError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
     except RuntimeError as exc:
         if str(exc) == "SAFETY_TRIGGERED":
             return safety_message()
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+        raise HTTPException(status_code=503, detail="Gemini is temporarily unavailable; the challenge response was not generated.") from exc
 
 
 @router.get("/{conversation_id}")

@@ -18,7 +18,10 @@ services:
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.8-flash}
       GEMINI_FAST_MODEL: ${GEMINI_FAST_MODEL:-gemini-3.1-flash-lite}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:5173}
-      DEMO_USER_ID: ${DEMO_USER_ID:-demo}
+      DEMO_MODE: ${DEMO_MODE:-false}
+      ALLOW_LEGACY_PROFILE_ID: ${ALLOW_LEGACY_PROFILE_ID:-false}
+      SEED_DEMO_ON_STARTUP: ${SEED_DEMO_ON_STARTUP:-false}
+      AUTO_INGEST_TEACHINGS: ${AUTO_INGEST_TEACHINGS:-true}
       TEACHINGS_JSON_PATH: ${TEACHINGS_JSON_PATH:-data/articles.json}
     ports:
       - "8000:8000"

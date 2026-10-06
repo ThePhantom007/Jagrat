@@ -4,9 +4,10 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import ActionFollowUp, ActionItem, Conversation, InteractionRecord, JournalEntry, ReflectionGoal, SavedTeaching, Teaching, WeeklyCheckIn, WeeklyReport
+from app.models import ActionFollowUp, ActionItem, Conversation, InteractionRecord, JournalEntry, ReflectionGoal, SavedTeaching, Teaching, WeeklyCheckIn, WeeklyReport, VivekanandaComparison
 from app.schemas import AnchorTeaching, FactorTrendPoint, GrowthFactorSnapshot, GrowthJourneyResponse, GrowthResponse, ReflectionGoalResponse, SavedTeachingResponse, SourceResponse, ThemeCount, WeeklyReportGeneration
 from app.services.gemini import GeminiService, compact_json
+from app.services.mentor import SourceGuardError, validate_ai_written_text
 from app.services.prompts import WEEKLY_SYSTEM
 
 
@@ -33,7 +34,8 @@ def _activity_dates(db: Session, profile_id: str) -> set:
     dates = set()
     journals = db.scalars(select(JournalEntry.created_at).where(JournalEntry.profile_id == profile_id)).all()
     conversations = db.scalars(select(Conversation.created_at).where(Conversation.profile_id == profile_id)).all()
-    for dt in [*journals, *conversations]:
+    comparisons = db.scalars(select(VivekanandaComparison.created_at).where(VivekanandaComparison.profile_id == profile_id)).all()
+    for dt in [*journals, *conversations, *comparisons]:
         dates.add(dt.astimezone(timezone.utc).date())
     return dates
 
@@ -52,7 +54,9 @@ def calculate_day_streak(db: Session, profile_id: str) -> int:
 
 
 def total_reflections(db: Session, profile_id: str) -> int:
-    return len(list(db.scalars(select(Conversation.id).where(Conversation.profile_id == profile_id)).all()))
+    mentor_count = len(list(db.scalars(select(Conversation.id).where(Conversation.profile_id == profile_id)).all()))
+    comparison_count = len(list(db.scalars(select(VivekanandaComparison.id).where(VivekanandaComparison.profile_id == profile_id)).all()))
+    return mentor_count + comparison_count
 
 
 def current_factor_cards(db: Session, profile_id: str) -> list[GrowthFactorSnapshot]:
@@ -74,7 +78,13 @@ def _weekly_anchor(db: Session, profile_id: str, start: datetime) -> AnchorTeach
         .where(Conversation.profile_id == profile_id, Conversation.created_at >= start, Conversation.created_at < end, Conversation.selected_teaching_id.is_not(None))
         .order_by(Conversation.created_at.desc())
     ).all())
-    counts = Counter(r.selected_teaching_id for r in rows if r.selected_teaching_id)
+    comparisons = list(db.scalars(
+        select(VivekanandaComparison)
+        .where(VivekanandaComparison.profile_id == profile_id, VivekanandaComparison.created_at >= start, VivekanandaComparison.created_at < end, VivekanandaComparison.selected_teaching_id.is_not(None))
+        .order_by(VivekanandaComparison.created_at.desc())
+    ).all())
+    teaching_ids = [r.selected_teaching_id for r in rows if r.selected_teaching_id] + [r.selected_teaching_id for r in comparisons if r.selected_teaching_id]
+    counts = Counter(teaching_ids)
     if not counts:
         return None
     teaching_id = counts.most_common(1)[0][0]
@@ -271,11 +281,34 @@ def generate_report(db: Session, profile_id: str, gemini: GeminiService, start: 
     if existing:
         return existing
     payload = weekly_payload(db, profile_id, start, end)
-    generated = gemini.generate(
-        system_instruction=WEEKLY_SYSTEM,
-        prompt="Generate the weekly report from this evidence:\n" + compact_json(payload),
-        schema=WeeklyReportGeneration,
-    )
+    last_error: Exception | None = None
+    generated = None
+    for correction in (False, True):
+        try:
+            prompt = "Generate the weekly report from this evidence:\n" + compact_json(payload)
+            if correction:
+                prompt = (
+                    "Regenerate the weekly report. Do not include any quotation marks containing source text and "
+                    "do not attribute any statement or quotation to Swami Vivekananda. Return JSON only:\n"
+                    + compact_json(payload)
+                )
+            candidate = gemini.generate(system_instruction=WEEKLY_SYSTEM, prompt=prompt, schema=WeeklyReportGeneration)
+            validate_ai_written_text(
+                candidate.summary,
+                *candidate.recurring_themes,
+                *candidate.positive_changes,
+                *candidate.areas_to_reflect_on,
+                candidate.next_week_focus,
+                candidate.encouragement,
+            )
+            generated = candidate
+            break
+        except SourceGuardError as exc:
+            last_error = exc
+        except Exception:
+            raise
+    if generated is None:
+        raise RuntimeError(str(last_error or "Weekly report failed source-grounding validation"))
     row = WeeklyReport(profile_id=profile_id, week_start=start, report_json=generated.model_dump())
     db.add(row)
     db.commit()

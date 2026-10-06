@@ -11,7 +11,7 @@ router = APIRouter(prefix="/teachings", tags=["teachings"])
 
 @router.get("")
 def list_teachings(query: str | None = None, db: Session = Depends(get_db), profile: Profile = Depends(get_profile)):
-    rows = list(db.scalars(select(Teaching)).all())
+    rows = list(db.scalars(select(Teaching).where(Teaching.is_active.is_(True))).all())
     if query:
         q = query.lower()
         rows = [
