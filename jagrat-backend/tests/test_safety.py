@@ -19,3 +19,13 @@ def test_safety_message_contains_india_support():
     assert "14416" in numbers
     assert "112" in numbers
     assert payload["challenge_available"] is False
+
+
+def test_safety_patterns_cover_english_and_romanised_hinglish_only():
+    """Scope guard: crisis patterns are intentionally limited to English and Hinglish (Latin script)."""
+    from app.services.safety import IMMEDIATE_PATTERNS
+    assert all(p.pattern.isascii() for p in IMMEDIATE_PATTERNS)
+
+
+def test_hinglish_crisis_phrase_is_detected():
+    assert local_risk_check("mujhe jeena nahi hai") is not None

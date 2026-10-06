@@ -72,7 +72,7 @@ class VivekanandaVsMeService:
             "candidate_teachings": [
                 {
                     "id": t.id,
-                    "excerpt": build_retrieval_excerpt(t.quote, terms.terms, settings.max_candidate_excerpt_chars),
+                    "excerpt": build_retrieval_excerpt(t.quote, terms, settings.max_candidate_excerpt_chars),
                     "themes": t.themes,
                     "emotions": t.emotions,
                     "challenges": t.challenges,
@@ -115,6 +115,7 @@ class VivekanandaVsMeService:
                     *generation.questions_for_me,
                     generation.experiment,
                     generation.conclusion,
+                    user_text=context.get("my_view", ""),
                 )
                 validate_quote_id(generation.teaching.quote_id, {c["id"] for c in context["candidate_teachings"]})
                 return generation

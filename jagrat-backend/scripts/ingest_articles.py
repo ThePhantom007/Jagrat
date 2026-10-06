@@ -15,11 +15,18 @@ import app.models  # noqa: F401
 from app.db.init_db import init_db
 from app.db.session import SessionLocal
 from app.models import Teaching
-from app.services.retrieval import infer_retrieval_lists, invalidate_teaching_index
+from app.services.retrieval import (
+    RETRIEVAL_METADATA_VERSION,
+    classify_source_type,
+    infer_retrieval_lists,
+    invalidate_teaching_index,
+)
 
 
 def sha256_record(*, text: str, source_title: str, source_volume: str | None, source_type: str) -> str:
-    payload = "\n".join([text, source_title, source_volume or "", source_type])
+    # The retrieval-metadata version is part of the record fingerprint so that a change to how retrieval
+    # tags are derived refreshes stored tags on existing deployments. Source text is never altered.
+    payload = "\n".join([text, source_title, source_volume or "", source_type, RETRIEVAL_METADATA_VERSION])
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
@@ -131,20 +138,27 @@ def read_articles(path: Path) -> tuple[list[dict[str, Any]], dict[str, int]]:
     return unique, {"input_records": len(payload), "unique_articles": len(unique), "duplicates_removed": duplicate_count}
 
 
-def article_to_rows(article: dict[str, Any]) -> list[dict[str, Any]]:
+def article_to_rows(article: dict[str, Any], with_metadata: bool = True) -> list[dict[str, Any]]:
     title = article["title"]
     volume = article["volume"]
-    source_type = article["source_type"]
+    declared_type = article["source_type"]
     passages = split_into_passages(article["paragraphs"])
     article_full = "\n\n".join(article["paragraphs"])
     article_id = stable_article_id(title, volume or "", article_full)
     rows = []
     for number, (start, end, text) in enumerate(passages, start=1):
-        metadata = infer_retrieval_lists(title=title, volume=volume, text=text, context=article["context"])
-        # Teammate-supplied tags are optional retrieval hints. Deterministic inference remains the
-        # fallback and canonical source text is never changed by these fields.
-        metadata["themes"] = list(dict.fromkeys([*article.get("themes", []), *metadata["themes"]]))[:6]
-        metadata["emotions"] = list(dict.fromkeys([*article.get("emotions", []), *metadata["emotions"]]))[:6]
+        # Cover metadata and tiny fragments stay in the database (nothing is deleted) but are flagged so
+        # retrieval never offers them as a teaching.
+        source_type = classify_source_type(title=title, text=text, declared=declared_type)
+        if with_metadata:
+            metadata = infer_retrieval_lists(title=title, volume=volume, text=text, context=article["context"])
+            # Teammate-supplied tags are optional retrieval hints. Deterministic inference remains the
+            # fallback and canonical source text is never changed by these fields.
+            metadata["themes"] = list(dict.fromkeys([*article.get("themes", []), *metadata["themes"]]))[:6]
+            metadata["emotions"] = list(dict.fromkeys([*article.get("emotions", []), *metadata["emotions"]]))[:6]
+        else:
+            # Fingerprinting only needs ids and content hashes; skip the (slow) tag inference at startup.
+            metadata = {"themes": [], "emotions": [], "challenges": [], "keywords": []}
         rows.append(
             {
                 "id": f"{article_id}-{number:02d}",
@@ -164,17 +178,17 @@ def article_to_rows(article: dict[str, Any]) -> list[dict[str, Any]]:
     return rows
 
 
-def load_rows(path: Path) -> tuple[list[dict[str, Any]], dict[str, int]]:
+def load_rows(path: Path, with_metadata: bool = True) -> tuple[list[dict[str, Any]], dict[str, int]]:
     articles, stats = read_articles(path)
     rows: list[dict[str, Any]] = []
     for article in articles:
-        rows.extend(article_to_rows(article))
+        rows.extend(article_to_rows(article, with_metadata=with_metadata))
     stats["passages_created"] = len(rows)
     return rows, stats
 
 
 def dataset_fingerprint(path: Path) -> str:
-    rows, _ = load_rows(path)
+    rows, _ = load_rows(path, with_metadata=False)
     digest = hashlib.sha256()
     for row in sorted(rows, key=lambda r: r["id"]):
         digest.update(f"{row['id']}:{row['content_sha256']}\n".encode("utf-8"))
@@ -195,8 +209,11 @@ def import_json(path: Path, replace: bool = False) -> tuple[int, dict[str, int]]
         db.execute(update(Teaching).values(is_active=False))
         inserted = 0
         updated = 0
+        # One query for all existing rows instead of one round trip per passage: against a remote
+        # Postgres (Neon/Render) the per-row lookup made the first import take minutes.
+        existing_by_id = {t.id: t for t in db.scalars(select(Teaching)).all()}
         for row in rows:
-            existing = db.get(Teaching, row["id"])
+            existing = existing_by_id.get(row["id"])
             if existing is None:
                 db.add(
                     Teaching(

@@ -20,9 +20,9 @@ See `data/JSON_FORMAT.md`.
 
 ```text
 JSON source (local)
-  -> backend ingestion/chunking
-  -> deterministic retrieval
-  -> 5–7 candidate passages
+  -> backend ingestion/chunking (cover metadata and tiny fragments flagged, never deleted)
+  -> deterministic retrieval (BM25 over small windows + Vivekananda-vocabulary bridge)
+  -> 5–7 candidate passages from different articles
   -> compact exact-text excerpts to Gemini
   -> Gemini returns quote_id only
   -> candidate-ID validation
@@ -31,6 +31,23 @@ JSON source (local)
 ```
 
 Full canonical passages are never sent to Gemini unless they happen to be shorter than the excerpt ceiling. This keeps the free Gemini API usage focused on reasoning instead of repeatedly transmitting the entire source bank.
+
+## How retrieval works
+
+Retrieval is deterministic and local (no embeddings, no extra API calls):
+
+- **Windows, not whole passages.** Each canonical passage (up to ~900 words) is indexed as 60–150-word windows and ranked by its best window, so a focused teaching inside a long multi-topic lecture is not diluted. The user is still shown the full canonical passage.
+- **BM25 with light stemming** (`fail`/`failed`/`failing`), so rare, meaningful words count more than common ones (`work`, `mind`, `life`).
+- **Vocabulary bridge.** Modern wording ("I failed my exam, I'm not capable") is widened with the words Vivekananda actually uses on those concerns (weakness, strength, faith, fearless, arise, awake, …) at a lower weight than the user's own words. This only widens the *query*; it never alters or invents source text. The lexicon lives in `app/services/retrieval.py` (`BRIDGE`) and is easy to extend.
+- **Informative-term coverage.** A window only qualifies if it matches enough informative (rare) query terms; ubiquitous words alone never make a passage relevant.
+- **Relevance gate.** A query with no recognised human concern (e.g. a laptop question) needs very strong lexical evidence, otherwise Mentor returns `teaching: null` with the Trust Panel note.
+- **Diversity.** At most 2 candidates per source article.
+- **Down-ranked, not removed:** salutation/sign-off letters. **Flagged and never offered:** the COVER metadata (`source_type = front_matter`) and passages under 30 words (`fragment`). They stay in the database.
+- **Stored tags** are inferred with whole-word matching and a frequency floor (previously raw substring matching tagged almost every passage with almost every theme). Changing `RETRIEVAL_METADATA_VERSION` refreshes stored tags on the next startup of an existing deployment.
+
+All JSON passages are treated as authentic organiser-provided teachings; retrieval makes no authorship judgements.
+
+Known limit: this is lexical retrieval. It cannot match meaning when the user's words and the corpus share no vocabulary, so the Gemini step still decides whether a candidate genuinely fits and may return `null`. Embedding-based re-ranking is the natural next upgrade.
 
 ## Run locally
 
@@ -66,6 +83,10 @@ The importer deduplicates exact duplicate article records and preserves every un
 
 
 ## Reliability and deployment safeguards
+
+- **Render/Postgres:** set `DATABASE_URL` to a persistent Postgres database (Neon or Render Postgres); `postgres://` and `postgresql://` URLs are converted to the psycopg3 driver automatically. `render.yaml` pins Python 3.12 and sets `ENVIRONMENT=production`. On startup the app logs warnings for SQLite in production (ephemeral disk), a missing `GEMINI_API_KEY`, and localhost-only `CORS_ORIGINS`.
+- The canonical import loads existing rows in one query and commits once; startup skips the import entirely when the data and retrieval-metadata version are unchanged (about 4 s warm start, ~130 MB RAM).
+- **Safety scope:** the local crisis patterns intentionally cover English and romanised Hinglish only (enforced by a test).
 
 - `CORS_ORIGINS` is marked with `NoDecode` so comma-separated environment variables load correctly under `pydantic-settings`.
 - Gemini/provider failures surface as HTTP 503 rather than 500. Requests and journal text are persisted before provider calls so users can retry after quota/outage errors.
@@ -141,3 +162,15 @@ The user may set one active goal from `/api/growth/goal`. The goal is stored sep
 ## Teaching Library
 
 Saved canonical teachings are available under `/api/teachings/saved` and are also included in `/api/growth-journey` as `saved_teachings` so the Growth Journey frontend can render a "My Teachings" section without another fetch.
+
+## Patch notes (post-review)
+
+- **First-message safety:** `POST /api/mentor` now honours the model's `risk` assessment (previously only continue/retry/challenge/vs-me/journal did). A flagged first message marks the conversation `risk_flag` and returns the safety response. Local patterns were extended (e.g. "I want to die", "take my own life", "better off without me", "no point in living"), and "I can't keep going to/with …" no longer triggers.
+- **Source guard:** quoted text is now detected as properly paired quotes (two short quoted words no longer look like one long quote), and a quotation that is the user's own wording is allowed. Invented/attributed quotations are still rejected. Mentor and challenge prompts now tell the model not to use quotation marks.
+- **Teaching payload:** `teaching` now also carries `word_count`, `preview` (first ~90 words of the exact text) and `is_letter`, so the frontend can collapse long passages. `quote` is still the full, unmodified canonical passage.
+- New tests: `tests/test_first_message_safety_and_quote_guard.py`. These changes were validated with stubbed unit checks only; run `pytest -q` before deploying.
+
+## Verification scripts
+
+- `python scripts/smoke_http.py` — zero-token HTTP smoke test (Gemini key forced empty, throwaway SQLite DB).
+- `python scripts/live_gemini_check.py sdk|mentor|vs` — call-capped live Gemini check (use a separate test key; `MAX_CALLS` env var, default 4).

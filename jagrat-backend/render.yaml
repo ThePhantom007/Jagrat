@@ -8,6 +8,12 @@ services:
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /health
     envVars:
+      # Match the Dockerfile so local, Docker and Render builds use the same interpreter.
+      - key: PYTHON_VERSION
+        value: 3.12.8
+      - key: ENVIRONMENT
+        value: production
+      # Must be a persistent Postgres URL (Neon / Render Postgres). SQLite is wiped on every redeploy here.
       - key: DATABASE_URL
         sync: false
       - key: GEMINI_API_KEY

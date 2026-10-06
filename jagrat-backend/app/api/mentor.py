@@ -37,6 +37,8 @@ def mentor(payload: MentorRequest, db: Session = Depends(get_db), profile: Profi
     except SourceGuardError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     except RuntimeError as exc:
+        if str(exc) == "SAFETY_TRIGGERED":
+            return safety_message()
         raise HTTPException(status_code=503, detail="Jagrat could not complete the reflection because Gemini is temporarily unavailable. Your request was saved; retry the reflection.") from exc
 
 

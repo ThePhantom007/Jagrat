@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.config import get_settings
 from app.models import Conversation, JournalInsight, Message, Profile, ReflectionGoal, Teaching
-from app.services.retrieval import retrieve_journal_insights, retrieve_teachings, terms_from_analysis
+from app.services.retrieval import retrieve_journal_insights, retrieve_teachings, stem_tokens, terms_from_analysis
 
 MAX_CANDIDATE_TEXT_CHARS = 1800
 MAX_CONTEXT_MESSAGE_CHARS = 3000
@@ -33,7 +33,7 @@ def onboarding_complete(profile) -> bool:
     return True
 
 
-def build_retrieval_excerpt(text: str, terms: set[str], max_chars: int = 1800) -> str:
+def build_retrieval_excerpt(text: str, terms, max_chars: int = 1800) -> str:
     """Return a compact exact-text excerpt for Gemini; full canonical text stays in the database.
 
     Selects the best sentence window by lexical overlap, then clips to a hard character ceiling.
@@ -44,11 +44,20 @@ def build_retrieval_excerpt(text: str, terms: set[str], max_chars: int = 1800) -
     sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", text) if s.strip()]
     if not sentences:
         return text[:max_chars]
-    normalized_terms = {t.lower() for t in terms}
+    # `terms` is a RetrievalTerms (weighted) or a plain set of words. Compare stems on both sides so
+    # 'failed' in the text matches 'fail' in the query, and let high-weight (the user's own) terms
+    # outweigh vocabulary-bridge expansions when choosing which sentence to show Gemini.
+    raw_terms = terms.terms if hasattr(terms, "terms") else terms
+    weight_of = terms.weight if hasattr(terms, "weight") else (lambda _t: 1.0)
+    term_weights: dict[str, float] = {}
+    for t in raw_terms:
+        for stem in set(stem_tokens(t)) | {t.lower()}:
+            term_weights[stem] = max(term_weights.get(stem, 0.0), weight_of(t))
     scored = []
     for i, sentence in enumerate(sentences):
-        words = set(re.findall(r"[a-z0-9_]+", sentence.lower()))
-        score = len(words & normalized_terms)
+        words = set(stem_tokens(sentence))
+        # Squared weights: one strong term outweighs several weak/common ones.
+        score = sum(term_weights[w] ** 2 for w in words if w in term_weights)
         scored.append((score, i, sentence))
     best_score, best_i, best_sentence = max(scored, key=lambda x: (x[0], -x[1]))
     chosen = [best_sentence]
@@ -142,7 +151,7 @@ def build_context(db: Session, *, profile_id: str, current_problem: str, analysi
         "candidate_teachings": [
             {
                 "id": t.id,
-                "excerpt": build_retrieval_excerpt(t.quote, terms.terms, settings.max_candidate_excerpt_chars),
+                "excerpt": build_retrieval_excerpt(t.quote, terms, settings.max_candidate_excerpt_chars),
                 "themes": t.themes,
                 "emotions": t.emotions,
                 "challenges": t.challenges,

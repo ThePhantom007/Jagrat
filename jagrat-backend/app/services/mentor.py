@@ -13,7 +13,7 @@ from app.schemas import ActionPayload, ChallengeGeneration, ChallengeResponse, M
 from app.services.context import build_context
 from app.services.gemini import GeminiService, compact_json
 from app.services.prompts import CHALLENGE_SYSTEM, MASTER_SYSTEM, TEXT_ASSESSMENT_SYSTEM
-from app.services.retrieval import terms_from_analysis
+from app.services.retrieval import looks_like_letter, terms_from_analysis
 
 
 class SourceGuardError(RuntimeError):
@@ -43,7 +43,53 @@ ATTRIBUTION_PATTERNS = [
     r"\bquote from\s+(?:swami\s+)?vivekananda\b",
 ]
 ATTRIBUTION_RE = re.compile("|".join(ATTRIBUTION_PATTERNS), re.IGNORECASE)
-DIRECT_QUOTE_RE = re.compile(r'["“”][^"“”\n]{20,}["“”]')
+MIN_QUOTED_CHARS = 20
+_CURLY_QUOTE_RE = re.compile(r"\u201c([^\u201c\u201d\n]+)\u201d")
+
+
+def _quoted_spans(text: str) -> list[str]:
+    """Return properly paired quoted spans.
+
+    Straight quotes are paired sequentially per line (1st with 2nd, 3rd with 4th, ...) so the text between
+    one quotation's closing mark and the next quotation's opening mark is never mistaken for a quotation.
+    """
+    spans = [m.group(1) for m in _CURLY_QUOTE_RE.finditer(text)]
+    for line in text.splitlines():
+        parts = line.split('"')
+        # parts[1], parts[3], ... are the inside of paired quotes (an unmatched trailing quote is ignored).
+        for i in range(1, len(parts) - 1, 2):
+            spans.append(parts[i])
+    return spans
+
+
+def _norm_quote(value: str) -> str:
+    return re.sub(r"\s+", " ", value).strip().strip(".,;:!?-\u2014 ").casefold()
+
+
+def has_long_unsourced_quote(text: str, user_text: str = "") -> bool:
+    """True when the AI text contains a long quotation that is not the user's own wording."""
+    user_norm = _norm_quote(user_text)
+    for span in _quoted_spans(text):
+        if len(span.strip()) < MIN_QUOTED_CHARS:
+            continue
+        # Echoing the user's own words back to them is reflective listening, not a fabricated source quote.
+        if user_norm and _norm_quote(span) in user_norm:
+            continue
+        return True
+    return False
+
+
+PREVIEW_WORDS = 90
+
+
+def _preview(text: str, max_words: int = PREVIEW_WORDS) -> str:
+    """First ~max_words words of the exact canonical text, cut at a sentence end where possible (display aid only)."""
+    words = text.split()
+    if len(words) <= max_words:
+        return text
+    cut = " ".join(words[:max_words])
+    end = max(cut.rfind(". "), cut.rfind("? "), cut.rfind("! "))
+    return (cut[: end + 1] if end > len(cut) // 2 else cut) + " …"
 
 
 def teaching_payload(t: Teaching | None):
@@ -52,6 +98,9 @@ def teaching_payload(t: Teaching | None):
     return {
         "id": t.id,
         "quote": t.quote,
+        "word_count": len(t.quote.split()),
+        "preview": _preview(t.quote),
+        "is_letter": looks_like_letter(t.quote),
         "source": {
             "type": t.source_type,
             "title": t.source_title,
@@ -89,10 +138,17 @@ def validate_quote_id(quote_id: str | None, candidate_ids: set[str]) -> str | No
     return quote_id
 
 
-def validate_ai_written_text(*texts: str) -> None:
+def validate_ai_written_text(*texts: str, user_text: str = "") -> None:
     combined = "\n".join(t or "" for t in texts)
-    if ATTRIBUTION_RE.search(combined) or DIRECT_QUOTE_RE.search(combined):
+    if ATTRIBUTION_RE.search(combined) or has_long_unsourced_quote(combined, user_text):
         raise SourceGuardError("AI-generated text attempted to present source material or an attribution as a quotation")
+
+
+def _user_text_from_context(context: dict) -> str:
+    """The user's own words in this request (current message and earlier user turns)."""
+    parts = [context.get("current_problem") or ""]
+    parts += [m.get("content") or "" for m in context.get("conversation_history", []) if m.get("role") == "user"]
+    return "\n".join(parts)
 
 
 def _history_for_challenge(rounds: list[ChallengeRound]) -> list[dict]:
@@ -153,6 +209,7 @@ class MentorService:
                     generation.challenge.question,
                     generation.action.action,
                     generation.action.reason,
+                    user_text=_user_text_from_context(context),
                 )
                 validate_quote_id(generation.teaching.quote_id, candidate_ids)
                 return generation
@@ -266,6 +323,10 @@ class MentorService:
         conversation = self._prepare_conversation(db, profile_id, message)
         try:
             assessment = assessment or self.assess_text(message)
+            if assessment.risk.risk_level in {"high", "immediate"}:
+                conversation.risk_flag = True
+                db.commit()
+                raise RuntimeError("SAFETY_TRIGGERED")
             analysis: ProblemAnalysis = assessment.analysis
             conversation.problem_analysis = analysis.model_dump()
             db.commit()
@@ -274,6 +335,15 @@ class MentorService:
             candidates = {item["id"] for item in context["candidate_teachings"]}
             generation = self._generate_clean_mentor(context, candidates)
             return self._persist_generation(db, conversation=conversation, profile_id=profile_id, message=message, analysis=analysis, generation=generation, context=context)
+        except RuntimeError as exc:
+            if str(exc) == "SAFETY_TRIGGERED":
+                raise  # conversation is already flagged; it must not be offered for retry
+            db.rollback()
+            existing = db.get(Conversation, conversation.id)
+            if existing:
+                existing.problem_analysis = {**(existing.problem_analysis or {}), "status": "pending"}
+                db.commit()
+            raise
         except Exception:
             # Keep the persisted conversation/message so the frontend can offer Retry Reflection.
             db.rollback()
@@ -386,7 +456,10 @@ class MentorService:
                         "Use the supplied teaching only as a principle. Return JSON only:\n" + compact_json(prompt)
                     )
                 candidate = self.gemini.generate(system_instruction=CHALLENGE_SYSTEM, prompt=challenge_prompt, schema=ChallengeGeneration)
-                validate_ai_written_text(candidate.assumption, candidate.question, candidate.reflection, candidate.next_step)
+                validate_ai_written_text(
+                    candidate.assumption, candidate.question, candidate.reflection, candidate.next_step,
+                    user_text="\n".join([conversation.current_problem or "", user_response, *[r.user_response or "" for r in rounds]]),
+                )
                 generated = candidate
                 break
             except SourceGuardError as exc:

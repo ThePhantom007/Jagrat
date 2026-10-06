@@ -191,6 +191,10 @@ class TeachingResponse(BaseModel):
     id: str
     quote: str
     source: SourceResponse
+    # Display aids derived from the exact canonical text; `quote` is always the full, unmodified passage.
+    word_count: int = 0
+    preview: str = ""
+    is_letter: bool = False
 
 
 class TrustPanel(BaseModel):
