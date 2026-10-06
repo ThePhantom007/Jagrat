@@ -69,6 +69,16 @@ python scripts/audit_articles.py data/articles.json
 The audit reports input records, unique articles, duplicate records, and resulting passages. Exact duplicates are removed at ingestion because they do not add source content. A large duplicate count should be treated as a likely export problem and checked with the source-data owner.
 
 
+## Continue a reflection later
+
+A mentor reflection is persisted as soon as it is created. The frontend can call:
+
+- `GET /api/mentor/sessions?status=active` to render a "Continue Reflection" section.
+- `GET /api/mentor/{conversation_id}` to restore the full conversation state.
+- `POST /api/mentor/{conversation_id}/continue` to add another turn to the same reflection.
+
+Session summaries include a status (`active`, `completed`, or `safety`), a preview, last activity timestamp, and a `resumable` flag. Completed or safety-flagged reflections cannot be continued. No duplicate conversation is created when resuming.
+
 ## Engagement additions
 
 - Reflection helpful/not helpful feedback

@@ -404,7 +404,11 @@ class MentorContinueRequest(BaseModel):
 class MentorSessionSummary(BaseModel):
     id: str
     current_problem: str
+    preview: str
+    status: Literal["active", "completed", "safety"]
     created_at: datetime
     updated_at: datetime
+    last_activity_at: datetime
     completed: bool
     challenge_rounds: int
+    resumable: bool

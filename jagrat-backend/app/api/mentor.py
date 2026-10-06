@@ -37,8 +37,7 @@ def mentor(payload: MentorRequest, db: Session = Depends(get_db), profile: Profi
     if is_blocking(assessment.risk.risk_level):
         return safety_message()
 
-    # The MVP creates a new reflection conversation for each mentor request.
-    # conversation_id is retained in the schema for frontend compatibility/future continuation.
+    # A new reflection creates a persisted conversation that can be resumed later.
     try:
         return svc.create_turn(db, profile.id, message, assessment=assessment)
     except LookupError as exc:
@@ -59,6 +58,11 @@ def continue_reflection(conversation_id: str, payload: MentorContinueRequest, db
             conversation.risk_flag = True
             db.commit()
         return safety_message()
+    conversation = db.scalar(select(Conversation).where(Conversation.id == conversation_id, Conversation.profile_id == profile.id))
+    if conversation and conversation.completed_at is not None:
+        raise HTTPException(status_code=409, detail="This reflection is already completed and cannot be continued")
+    if conversation and conversation.risk_flag:
+        raise HTTPException(status_code=409, detail="This reflection is unavailable because it was safety-flagged")
     try:
         return service().continue_turn(db, profile.id, conversation_id, response)
     except LookupError as exc:
@@ -75,16 +79,48 @@ def continue_reflection(conversation_id: str, payload: MentorContinueRequest, db
 
 @router.get("/sessions", response_model=list[MentorSessionSummary])
 def sessions(status: str = "active", db: Session = Depends(get_db), profile: Profile = Depends(get_profile)):
-    rows = list(db.scalars(select(Conversation).where(Conversation.profile_id == profile.id).order_by(Conversation.updated_at.desc()).limit(100)).all())
+    """Return persisted reflection sessions so the frontend can offer Resume Reflection."""
+    rows = list(
+        db.scalars(
+            select(Conversation)
+            .where(Conversation.profile_id == profile.id)
+            .order_by(Conversation.updated_at.desc())
+            .limit(100)
+        ).all()
+    )
+    if status not in {"active", "completed", "all"}:
+        raise HTTPException(status_code=422, detail="status must be active, completed, or all")
+
     if status == "active":
         rows = [r for r in rows if r.completed_at is None and not r.risk_flag]
     elif status == "completed":
         rows = [r for r in rows if r.completed_at is not None]
-    elif status == "all":
-        pass
-    else:
-        raise HTTPException(status_code=422, detail="status must be active, completed, or all")
-    return [MentorSessionSummary(id=r.id, current_problem=r.current_problem, created_at=r.created_at, updated_at=r.updated_at, completed=r.completed_at is not None, challenge_rounds=r.rounds_used) for r in rows]
+
+    result: list[MentorSessionSummary] = []
+    for r in rows:
+        last_message = r.messages[-1] if r.messages else None
+        last_activity = last_message.created_at if last_message else r.updated_at
+        if r.risk_flag:
+            session_status = "safety"
+        elif r.completed_at is not None:
+            session_status = "completed"
+        else:
+            session_status = "active"
+        result.append(
+            MentorSessionSummary(
+                id=r.id,
+                current_problem=r.current_problem,
+                preview=(r.current_problem[:160] + ("…" if len(r.current_problem) > 160 else "")),
+                status=session_status,
+                created_at=r.created_at,
+                updated_at=r.updated_at,
+                last_activity_at=last_activity,
+                completed=r.completed_at is not None,
+                challenge_rounds=r.rounds_used,
+                resumable=session_status == "active",
+            )
+        )
+    return result
 
 
 @router.post("/{conversation_id}/challenge", response_model=ChallengeResponse | SafetyResponse)
@@ -124,8 +160,11 @@ def get_conversation(conversation_id: str, db: Session = Depends(get_db), profil
         raise HTTPException(status_code=404, detail="Conversation not found")
     messages = list(db.scalars(select(Message).where(Message.conversation_id == conversation.id).order_by(Message.created_at)).all())
     rounds = list(db.scalars(select(ChallengeRound).where(ChallengeRound.conversation_id == conversation.id).order_by(ChallengeRound.round_number)).all())
+    status = "safety" if conversation.risk_flag else ("completed" if conversation.completed_at is not None else "active")
     return {
         "id": conversation.id,
+        "status": status,
+        "resumable": status == "active",
         "current_problem": conversation.current_problem,
         "problem_analysis": conversation.problem_analysis,
         "selected_teaching_id": conversation.selected_teaching_id,

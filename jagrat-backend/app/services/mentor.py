@@ -304,6 +304,7 @@ class MentorService:
         )
         db.add(new_round)
         conversation.rounds_used = round_no
+        conversation.updated_at = datetime.now(timezone.utc)
         if round_no == 3:
             conversation.completed_at = datetime.now(timezone.utc)
             db.add(
