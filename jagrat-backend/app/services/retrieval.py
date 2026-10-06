@@ -68,12 +68,12 @@ def teaching_score(teaching: Teaching, terms: set[str]) -> tuple[int, int, int]:
     text = tokenize(f"{teaching.quote} {teaching.context or ''}")
     metadata_overlap = len(metadata & terms)
     text_overlap = len(text & terms)
-    # Metadata matters most because it is explicitly curated by the CSV owner.
+    # Metadata matters most because it is explicitly curated by the JSON owner.
     return (metadata_overlap * 5 + text_overlap, metadata_overlap, text_overlap)
 
 
 def retrieve_teachings(db: Session, terms: RetrievalTerms, limit: int = 7) -> list[Teaching]:
-    # Deliberately deterministic/cost-free retrieval. All rows in this table are organiser-CSV records.
+    # Deliberately deterministic/cost-free retrieval. All rows in this table are organiser-JSON records.
     rows = list(db.scalars(select(Teaching)).all())
     ranked = sorted(rows, key=lambda t: teaching_score(t, terms.terms), reverse=True)
     matched = [row for row in ranked if teaching_score(row, terms.terms)[0] > 0]

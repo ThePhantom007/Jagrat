@@ -17,10 +17,10 @@ class Settings(BaseSettings):
     max_conversation_messages: int = 12
     journal_memory_limit: int = 5
     teaching_candidate_limit: int = 7
-    candidate_text_chars: int = 5000
+    max_candidate_excerpt_chars: int = 1800
     seed_demo_on_startup: bool = True
     auto_ingest_teachings: bool = True
-    teachings_csv_path: str = "data/teachings.csv"
+    teachings_json_path: str = "data/articles.json"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

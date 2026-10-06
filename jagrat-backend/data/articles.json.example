@@ -1,0 +1,13 @@
+[
+  {
+    "title": "EXAMPLE SOURCE TITLE",
+    "volume": "VOLUME 1",
+    "paragraphs": [
+      "Example paragraph one.",
+      "Example paragraph two."
+    ],
+    "source_type": "source_document",
+    "source_url": null,
+    "context": null
+  }
+]

@@ -31,7 +31,7 @@ def list_teachings(query: str | None = None, db: Session = Depends(get_db), prof
                 "page": t.source_page,
                 "section": t.source_section,
                 "url": t.source_url,
-                "authority": "organizer_provided_csv",
+                "authority": "organizer_provided_json",
             },
         }
         for t in rows[:50]

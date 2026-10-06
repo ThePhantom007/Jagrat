@@ -1,11 +1,12 @@
 from sqlalchemy import select
+import re
 from sqlalchemy.orm import Session, joinedload
 
 from app.config import get_settings
 from app.models import Conversation, JournalInsight, Message, Profile, Teaching
 from app.services.retrieval import retrieve_journal_insights, retrieve_teachings, terms_from_analysis
 
-MAX_CANDIDATE_TEXT_CHARS = 5000
+MAX_CANDIDATE_TEXT_CHARS = 1800
 MAX_CONTEXT_MESSAGE_CHARS = 3000
 MAX_JOURNAL_EXCERPT_CHARS = 1800
 
@@ -30,6 +31,51 @@ def onboarding_complete(profile) -> bool:
     if answers.get("improve") == "other" and not answers.get("improve_other"):
         return False
     return True
+
+
+def build_retrieval_excerpt(text: str, terms: set[str], max_chars: int = 1800) -> str:
+    """Return a compact exact-text excerpt for Gemini; full canonical text stays in the database.
+
+    Selects the best sentence window by lexical overlap, then clips to a hard character ceiling.
+    The excerpt is never rendered as the canonical teaching in the UI.
+    """
+    if len(text) <= max_chars:
+        return text
+    sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", text) if s.strip()]
+    if not sentences:
+        return text[:max_chars]
+    normalized_terms = {t.lower() for t in terms}
+    scored = []
+    for i, sentence in enumerate(sentences):
+        words = set(re.findall(r"[a-z0-9_]+", sentence.lower()))
+        score = len(words & normalized_terms)
+        scored.append((score, i, sentence))
+    best_score, best_i, best_sentence = max(scored, key=lambda x: (x[0], -x[1]))
+    chosen = [best_sentence]
+    budget = max_chars - len(best_sentence)
+    left = best_i - 1
+    right = best_i + 1
+    while budget > 80 and (left >= 0 or right < len(sentences)):
+        candidates = []
+        if left >= 0:
+            candidates.append((sentences[left], left))
+        if right < len(sentences):
+            candidates.append((sentences[right], right))
+        if not candidates:
+            break
+        sent, idx = min(candidates, key=lambda item: (len(item[0]), abs(item[1]-best_i)))
+        if len(sent) + 1 > budget:
+            break
+        if idx < best_i:
+            chosen.insert(0, sent)
+        else:
+            chosen.append(sent)
+        budget -= len(sent) + 1
+        if idx < best_i:
+            left -= 1
+        else:
+            right += 1
+    return " ".join(chosen)[:max_chars]
 
 
 def build_context(db: Session, *, profile_id: str, current_problem: str, analysis, conversation: Conversation):
@@ -89,7 +135,7 @@ def build_context(db: Session, *, profile_id: str, current_problem: str, analysi
         "candidate_teachings": [
             {
                 "id": t.id,
-                "text": t.quote[:MAX_CANDIDATE_TEXT_CHARS],
+                "excerpt": build_retrieval_excerpt(t.quote, terms.terms, settings.max_candidate_excerpt_chars),
                 "themes": t.themes,
                 "emotions": t.emotions,
                 "challenges": t.challenges,

@@ -87,22 +87,17 @@ def bootstrap() -> None:
     if settings.environment == "test":
         return
 
-    csv_path = Path(settings.teachings_csv_path)
-    if settings.auto_ingest_teachings and csv_path.exists():
-        # Compare the committed CSV against database record hashes. This keeps fresh Render
-        # deploys synchronized with a changed organiser CSV without requiring Render shell access.
-        from scripts.ingest_teachings import canonical_dataset_fingerprint, import_csv
-
-        expected_fingerprint = canonical_dataset_fingerprint(csv_path)
+    json_path = Path(settings.teachings_json_path)
+    if settings.auto_ingest_teachings and json_path.exists():
+        from scripts.ingest_articles import dataset_fingerprint, import_json
+        expected_fingerprint = dataset_fingerprint(json_path)
+        import hashlib
         with SessionLocal() as db:
             rows = list(db.execute(select(Teaching.id, Teaching.content_sha256)).all())
             db_fingerprint_parts = sorted(f"{row[0]}:{row[1]}" for row in rows)
-            import hashlib
             actual_digest = hashlib.sha256(("\n".join(db_fingerprint_parts) + ("\n" if db_fingerprint_parts else "")).encode("utf-8")).hexdigest()
-
         if actual_digest != expected_fingerprint:
-            # Import as a separate transaction; validation occurs before mutation, and the transaction rolls back on error.
-            import_csv(csv_path, replace=True)
+            import_json(json_path, replace=True)
 
     if settings.seed_demo_on_startup:
         with SessionLocal() as db:

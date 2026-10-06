@@ -19,6 +19,7 @@ services:
       GEMINI_FAST_MODEL: ${GEMINI_FAST_MODEL:-gemini-3.1-flash-lite}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:5173}
       DEMO_USER_ID: ${DEMO_USER_ID:-demo}
+      TEACHINGS_JSON_PATH: ${TEACHINGS_JSON_PATH:-data/articles.json}
     ports:
       - "8000:8000"
     depends_on:

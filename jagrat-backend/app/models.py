@@ -24,7 +24,7 @@ class Profile(Base):
 class Teaching(Base):
     __tablename__ = "teachings"
 
-    # Canonical records imported from the organiser-provided CSV.
+    # Canonical records imported from the organiser-provided JSON.
     id: Mapped[str] = mapped_column(String(100), primary_key=True)
     quote: Mapped[str] = mapped_column(Text)
     themes: Mapped[list] = mapped_column(JSON, default=list)

@@ -18,7 +18,7 @@ def test_canonical_teaching_keeps_exact_multiline_text():
     )
     payload = teaching_payload(teaching)
     assert payload["quote"] == "Paragraph one.\n\nParagraph two."
-    assert payload["source"]["authority"] == "organizer_provided_csv"
+    assert payload["source"]["authority"] == "organizer_provided_json"
 
 
 def test_quote_id_must_be_in_candidate_set():

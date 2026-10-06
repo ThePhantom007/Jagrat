@@ -92,7 +92,7 @@ def _weekly_anchor(db: Session, profile_id: str, start: datetime) -> AnchorTeach
             "page": teaching.source_page,
             "section": teaching.source_section,
             "url": teaching.source_url,
-            "authority": "organizer_provided_csv",
+            "authority": "organizer_provided_json",
         },
     )
 

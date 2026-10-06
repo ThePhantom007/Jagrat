@@ -30,7 +30,7 @@ def teaching_payload(t: Teaching | None):
         return None
     return {
         "id": t.id,
-        # Exact text from the canonical organiser CSV/database record.
+        # Exact text from the canonical organiser JSON/database record.
         "quote": t.quote,
         "source": {
             "type": t.source_type,
@@ -40,7 +40,7 @@ def teaching_payload(t: Teaching | None):
             "page": t.source_page,
             "section": t.source_section,
             "url": t.source_url,
-            "authority": "organizer_provided_csv",
+            "authority": "organizer_provided_json",
         },
     }
 
@@ -50,7 +50,7 @@ def trust_panel(selected: Teaching | None, candidate_count: int, candidate_ids: 
         quote_verified=bool(selected and selected.id in candidate_ids),
         quote_id=selected.id if selected else None,
         candidate_count=candidate_count,
-        quote_authority="organizer_provided_csv",
+        quote_authority="organizer_provided_json",
         rendered_from_backend=bool(selected),
         ai_written_sections=["understanding", "interpretation", "reflection_question", "challenge", "action"],
     )

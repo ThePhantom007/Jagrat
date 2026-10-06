@@ -11,8 +11,8 @@ def honesty(profile: Profile = Depends(get_profile)):
         "product": "Jagrat",
         "identity": "Jagrat is an AI reflection tool, not Swami Vivekananda.",
         "source_authority": {
-            "name": "organizer_provided_csv",
-            "description": "The organiser-provided CSV is the canonical source of truth for teachings used by Jagrat.",
+            "name": "organizer_provided_json",
+            "description": "The organiser-provided JSON is the canonical source of truth for teachings used by Jagrat.",
         },
         "quote_handling": {
             "gemini_returns": "quote_id only",
