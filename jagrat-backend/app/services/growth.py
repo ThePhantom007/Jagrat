@@ -4,8 +4,8 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import Conversation, InteractionRecord, JournalEntry, Teaching, WeeklyCheckIn, WeeklyReport
-from app.schemas import AnchorTeaching, FactorTrendPoint, GrowthFactorSnapshot, GrowthJourneyResponse, GrowthResponse, ThemeCount, WeeklyReportGeneration
+from app.models import ActionFollowUp, ActionItem, Conversation, InteractionRecord, JournalEntry, ReflectionGoal, SavedTeaching, Teaching, WeeklyCheckIn, WeeklyReport
+from app.schemas import AnchorTeaching, FactorTrendPoint, GrowthFactorSnapshot, GrowthJourneyResponse, GrowthResponse, ReflectionGoalResponse, SavedTeachingResponse, SourceResponse, ThemeCount, WeeklyReportGeneration
 from app.services.gemini import GeminiService, compact_json
 from app.services.prompts import WEEKLY_SYSTEM
 
@@ -97,6 +97,42 @@ def _weekly_anchor(db: Session, profile_id: str, start: datetime) -> AnchorTeach
     )
 
 
+def _active_goal(db: Session, profile_id: str) -> ReflectionGoalResponse | None:
+    goal = db.scalar(select(ReflectionGoal).where(ReflectionGoal.profile_id == profile_id))
+    if goal is None:
+        return None
+    return ReflectionGoalResponse(
+        id=goal.id, goal_key=goal.goal_key, goal_text=goal.goal_text,
+        created_at=goal.created_at, updated_at=goal.updated_at,
+    )
+
+
+def _saved_teachings(db: Session, profile_id: str) -> list[SavedTeachingResponse]:
+    rows = list(
+        db.scalars(
+            select(SavedTeaching)
+            .where(SavedTeaching.profile_id == profile_id)
+            .order_by(SavedTeaching.created_at.desc())
+        ).all()
+    )
+    result: list[SavedTeachingResponse] = []
+    for row in rows:
+        teaching = db.get(Teaching, row.teaching_id)
+        if teaching is None:
+            continue
+        source = SourceResponse(
+            type=teaching.source_type, title=teaching.source_title, volume=teaching.source_volume,
+            chapter=teaching.source_chapter, page=teaching.source_page, section=teaching.source_section,
+            url=teaching.source_url, authority="organizer_provided_json",
+        )
+        result.append(
+            SavedTeachingResponse(
+                id=row.id, teaching_id=teaching.id, quote=teaching.quote, source=source, saved_at=row.created_at
+            )
+        )
+    return result
+
+
 def build_growth_journey(db: Session, profile_id: str) -> GrowthJourneyResponse:
     now = datetime.now(timezone.utc)
     start = week_start(now)
@@ -107,6 +143,8 @@ def build_growth_journey(db: Session, profile_id: str) -> GrowthJourneyResponse:
     return GrowthJourneyResponse(
         day_streak=calculate_day_streak(db, profile_id),
         total_reflections=total_reflections(db, profile_id),
+        active_goal=_active_goal(db, profile_id),
+        saved_teachings=_saved_teachings(db, profile_id),
         factor_cards=current_factor_cards(db, profile_id),
         reflection_themes_observed=period.reflection_themes_observed,
         lifetime_factor_trends=lifetime_factor_trends(db, profile_id),
@@ -200,14 +238,30 @@ def weekly_payload(db: Session, profile_id: str, start: datetime, end: datetime)
     growth = _build_growth_period(db, profile_id, start, end)
     growth_themes = [x.model_dump() for x in growth.reflection_themes_observed]
     checkins = list(db.scalars(select(WeeklyCheckIn).where(WeeklyCheckIn.profile_id == profile_id, WeeklyCheckIn.week_start >= start, WeeklyCheckIn.week_start < end).order_by(WeeklyCheckIn.week_start)).all())
+    actions = list(db.scalars(
+        select(ActionItem).where(ActionItem.profile_id == profile_id, ActionItem.created_at >= start, ActionItem.created_at < end)
+    ).all())
+    action_data = []
+    for action in actions:
+        follow_up = db.scalar(select(ActionFollowUp).where(ActionFollowUp.action_id == action.id, ActionFollowUp.profile_id == profile_id))
+        action_data.append({
+            "id": action.id,
+            "text": action.text,
+            "completed": action.completed_at is not None,
+            "completed_at": action.completed_at.isoformat() if action.completed_at else None,
+            "follow_up": {"outcome": follow_up.outcome, "note": follow_up.note} if follow_up else None,
+        })
+    goal = db.scalar(select(ReflectionGoal).where(ReflectionGoal.profile_id == profile_id))
     return {
         "week_start": start.isoformat(),
         "week_end": end.isoformat(),
+        "active_reflection_goal": {"goal_key": goal.goal_key, "goal_text": goal.goal_text} if goal else None,
         "reflection_themes_observed": growth_themes,
         "self_reported_checkins": [
             {"week_start": c.week_start.isoformat(), "self_belief": c.self_belief, "fear": c.fear, "discipline": c.discipline, "clarity": c.clarity, "resilience": c.resilience, "note": c.note}
             for c in checkins
         ],
+        "actions": action_data,
     }
 
 

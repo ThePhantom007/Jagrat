@@ -67,3 +67,25 @@ python scripts/audit_articles.py data/articles.json
 ```
 
 The audit reports input records, unique articles, duplicate records, and resulting passages. Exact duplicates are removed at ingestion because they do not add source content. A large duplicate count should be treated as a likely export problem and checked with the source-data owner.
+
+
+## Engagement additions
+
+- Reflection helpful/not helpful feedback
+- Resume a saved mentor conversation later
+- Action follow-up outcomes: completed / partially completed / not completed
+- Saved canonical teachings / personal Teaching Library
+- Optional active personal reflection goal used by Mentor when relevant
+- History search/filtering by type, text, and theme
+- A deterministic Today's Reflection prompt
+- Internal AI request tracing via `scripts/audit_traces.py` (not exposed as a public endpoint)
+
+No separate “Why this teaching?” feature is included.
+
+## Personal reflection goal
+
+The user may set one active goal from `/api/growth/goal`. The goal is stored separately from onboarding and is provided to Mentor as optional context. It should sharpen the framing or concrete action when relevant, without appearing as a hidden-profile dump in the response.
+
+## Teaching Library
+
+Saved canonical teachings are available under `/api/teachings/saved` and are also included in `/api/growth-journey` as `saved_teachings` so the Growth Journey frontend can render a "My Teachings" section without another fetch.

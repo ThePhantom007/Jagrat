@@ -1,10 +1,11 @@
 from datetime import datetime, timezone
+import uuid
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.models import ActionItem, ChallengeRound, Conversation, InteractionRecord, Message, Profile, Teaching
+from app.models import AIRequestTrace, ActionItem, ChallengeRound, Conversation, InteractionRecord, Message, Profile, Teaching
 from app.schemas import (
     ActionPayload,
     ChallengeGeneration,
@@ -168,6 +169,11 @@ class MentorService:
                 reason=generation.action.reason,
             )
         )
+        db.add(AIRequestTrace(
+            request_id=str(uuid.uuid4()), profile_id=profile_id, conversation_id=conversation.id, operation="mentor",
+            model=get_settings().gemini_model, candidate_ids=sorted(candidates), selected_quote_id=selected.id if selected else None,
+            safety_status="none", metadata_json={"analysis": analysis.model_dump(), "active_reflection_goal": context["profile"].get("active_reflection_goal")},
+        ))
         db.commit()
 
         return MentorResponse(
@@ -180,6 +186,58 @@ class MentorService:
             challenge=generation.challenge,
             action=generation.action,
             trust=trust_panel(selected, len(context["candidate_teachings"]), candidates),
+        )
+
+    def continue_turn(self, db: Session, profile_id: str, conversation_id: str, message: str) -> MentorResponse:
+        conversation = db.scalar(select(Conversation).where(Conversation.id == conversation_id, Conversation.profile_id == profile_id))
+        if not conversation:
+            raise ValueError("Conversation not found")
+        if conversation.risk_flag:
+            raise ValueError("Cannot continue a safety-flagged conversation")
+
+        assessment = self.assess_text(message)
+        if assessment.risk.risk_level in {"high", "immediate"}:
+            raise RuntimeError("SAFETY_TRIGGERED")
+        analysis = assessment.analysis
+        context = build_context(db, profile_id=profile_id, current_problem=message, analysis=analysis, conversation=conversation)
+        if not context["candidate_teachings"]:
+            raise LookupError("No sufficiently relevant organiser-provided teaching was found for this problem")
+
+        generation = self.gemini.generate(
+            system_instruction=MASTER_SYSTEM,
+            prompt=(
+                "Return JSON only for the following mentor context. Every one of the six onboarding fields must "
+                "meaningfully influence the response; include each field exactly once in personalization_trace:\n"
+                + compact_json(context)
+            ),
+            schema=MentorGeneration,
+        )
+        expected = {"profession", "age", "matters_most", "troubling_most", "problem_approach", "improve"}
+        if set(generation.personalization_trace) != expected:
+            raise RuntimeError("Gemini did not confirm use of all six onboarding dimensions")
+        candidates = {item["id"] for item in context["candidate_teachings"]}
+        quote_id = validate_quote_id(generation.teaching.quote_id, candidates)
+        selected = db.get(Teaching, quote_id) if quote_id else None
+        if quote_id and selected is None:
+            raise SourceGuardError("Selected teaching ID does not exist in the canonical teaching database")
+
+        conversation.current_problem = message
+        conversation.updated_at = datetime.now(timezone.utc)
+        conversation.selected_teaching_id = selected.id if selected else None
+        db.add(Message(conversation_id=conversation.id, role="user", content=message, metadata_json={"analysis": analysis.model_dump()}))
+        db.add(Message(conversation_id=conversation.id, role="assistant", content=generation.interpretation, metadata_json={"quote_id": selected.id if selected else None}))
+        db.add(InteractionRecord(profile_id=profile_id, conversation_id=conversation.id, themes=analysis.themes))
+        db.add(ActionItem(profile_id=profile_id, conversation_id=conversation.id, text=generation.action.action, reason=generation.action.reason))
+        db.add(AIRequestTrace(
+            request_id=str(uuid.uuid4()), profile_id=profile_id, conversation_id=conversation.id, operation="mentor_continue",
+            model=get_settings().gemini_model, candidate_ids=sorted(candidates), selected_quote_id=selected.id if selected else None,
+            safety_status="none", metadata_json={"analysis": analysis.model_dump(), "active_reflection_goal": context["profile"].get("active_reflection_goal")},
+        ))
+        db.commit()
+        return MentorResponse(
+            conversation_id=conversation.id, round=max(1, conversation.rounds_used), understanding=generation.understanding,
+            teaching=teaching_payload(selected), interpretation=generation.interpretation, reflection_question=generation.reflection_question,
+            challenge=generation.challenge, action=generation.action, trust=trust_panel(selected, len(candidates), candidates),
         )
 
     def continue_challenge(self, db: Session, profile_id: str, conversation_id: str, user_response: str, assessment: TextAssessment | None = None) -> ChallengeResponse:

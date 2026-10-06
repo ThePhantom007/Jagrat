@@ -4,14 +4,14 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_profile
 from app.db.session import get_db
-from app.models import ActionItem, Conversation, JournalEntry, Profile
+from app.models import ActionFollowUp, ActionItem, Conversation, JournalEntry, Profile
 from app.schemas import HistoryItem, HistoryResponse
 
 router = APIRouter(prefix="/history", tags=["history"] )
 
 
 @router.get("", response_model=HistoryResponse)
-def history(limit: int = 50, db: Session = Depends(get_db), profile: Profile = Depends(get_profile)):
+def history(limit: int = 50, item_type: str | None = None, q: str | None = None, theme: str | None = None, db: Session = Depends(get_db), profile: Profile = Depends(get_profile)):
     limit = max(10, min(limit, 100))
 
     journal = list(
@@ -94,9 +94,26 @@ def history(limit: int = 50, db: Session = Depends(get_db), profile: Profile = D
                     "completed": action.completed_at is not None,
                     "completed_at": action.completed_at,
                     "conversation_id": action.conversation_id,
+                    "follow_up": (lambda fu: {"outcome": fu.outcome, "note": fu.note, "created_at": fu.created_at} if fu else None)(
+                        db.scalar(select(ActionFollowUp).where(ActionFollowUp.action_id == action.id, ActionFollowUp.profile_id == profile.id))
+                    ),
                 },
             )
         )
 
     items.sort(key=lambda item: item.created_at, reverse=True)
+
+    normalized_q = q.strip().lower() if q else None
+    normalized_theme = theme.strip().lower().replace("-", "_") if theme else None
+    if item_type:
+        allowed = {"journal", "mentor", "action"}
+        if item_type not in allowed:
+            from fastapi import HTTPException
+            raise HTTPException(status_code=422, detail="item_type must be journal, mentor, or action")
+        items = [item for item in items if item.type == item_type]
+    if normalized_q:
+        items = [item for item in items if normalized_q in (item.title + " " + item.summary + " " + str(item.data)).lower()]
+    if normalized_theme:
+        items = [item for item in items if normalized_theme in {str(t).lower().replace("-", "_") for t in item.data.get("themes", [])}]
+
     return HistoryResponse(items=items[:limit])

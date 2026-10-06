@@ -3,7 +3,7 @@ import re
 from sqlalchemy.orm import Session, joinedload
 
 from app.config import get_settings
-from app.models import Conversation, JournalInsight, Message, Profile, Teaching
+from app.models import Conversation, JournalInsight, Message, Profile, ReflectionGoal, Teaching
 from app.services.retrieval import retrieve_journal_insights, retrieve_teachings, terms_from_analysis
 
 MAX_CANDIDATE_TEXT_CHARS = 1800
@@ -96,6 +96,9 @@ def build_context(db: Session, *, profile_id: str, current_problem: str, analysi
     messages.reverse()
 
     answers = (profile.answers if profile else {}) or {}
+    active_goal = db.scalar(
+        select(ReflectionGoal).where(ReflectionGoal.profile_id == profile_id)
+    )
     onboarding_profile = {
         "profession": answers.get("profession"),
         "profession_other": answers.get("profession_other"),
@@ -112,6 +115,10 @@ def build_context(db: Session, *, profile_id: str, current_problem: str, analysi
         "profile": {
             "display_name": profile.display_name if profile else "Friend",
             "onboarding": onboarding_profile,
+            "active_reflection_goal": {
+                "goal_key": active_goal.goal_key,
+                "goal_text": active_goal.goal_text,
+            } if active_goal else None,
         },
         "relevant_journal_memory": [
             {

@@ -149,6 +149,34 @@ class MentorRequest(BaseModel):
     conversation_id: str | None = None
 
 
+class ReflectionGoalRequest(BaseModel):
+    goal_key: Literal[
+        "confidence",
+        "discipline",
+        "fear",
+        "clarity",
+        "courage",
+        "focus",
+        "resilience",
+        "decision_making",
+        "personal_growth",
+        "custom",
+    ]
+    goal_text: str = Field(min_length=3, max_length=500)
+
+    def model_post_init(self, __context):
+        if len(self.goal_text.strip()) < 3:
+            raise ValueError("goal_text must contain at least 3 non-whitespace characters")
+
+
+class ReflectionGoalResponse(BaseModel):
+    id: str
+    goal_key: str
+    goal_text: str
+    created_at: datetime
+    updated_at: datetime
+
+
 class SourceResponse(BaseModel):
     type: str
     title: str
@@ -229,6 +257,8 @@ class ActionResponse(BaseModel):
     completed: bool
     created_at: datetime
     completed_at: datetime | None
+    follow_up_outcome: Literal["completed", "partially_completed", "not_completed"] | None = None
+    follow_up_note: str | None = None
 
 
 class CheckInRequest(BaseModel):
@@ -301,10 +331,20 @@ class AnchorTeaching(BaseModel):
     source: SourceResponse
 
 
+class SavedTeachingResponse(BaseModel):
+    id: str
+    teaching_id: str
+    quote: str
+    source: SourceResponse
+    saved_at: datetime
+
+
 class GrowthJourneyResponse(BaseModel):
     product: str = "Jagrat"
     day_streak: int
     total_reflections: int
+    active_goal: ReflectionGoalResponse | None = None
+    saved_teachings: list[SavedTeachingResponse] = Field(default_factory=list)
     factor_cards: list[GrowthFactorSnapshot]
     reflection_themes_observed: list[ThemeCount]
     lifetime_factor_trends: list[FactorTrendPoint]
@@ -321,3 +361,50 @@ class WeeklyReportResponse(WeeklyReportGeneration):
     total_reflections: int = 0
     factor_cards: list[GrowthFactorSnapshot] = Field(default_factory=list)
     weekly_anchor: AnchorTeaching | None = None
+
+
+class ReflectionFeedbackRequest(BaseModel):
+    helpful: bool
+    reason: str | None = Field(default=None, max_length=120)
+    note: str = Field(default="", max_length=1000)
+
+
+class ReflectionFeedbackResponse(BaseModel):
+    id: str
+    conversation_id: str
+    helpful: bool
+    reason: str | None
+    note: str
+    created_at: datetime
+
+
+class ActionFollowUpRequest(BaseModel):
+    outcome: Literal["completed", "partially_completed", "not_completed"]
+    note: str = Field(default="", max_length=1000)
+
+
+class ActionFollowUpResponse(BaseModel):
+    id: str
+    action_id: str
+    outcome: Literal["completed", "partially_completed", "not_completed"]
+    note: str
+    created_at: datetime
+
+
+class TodaysReflectionResponse(BaseModel):
+    prompt: str
+    theme: str | None
+    source: str
+
+
+class MentorContinueRequest(BaseModel):
+    message: str = Field(min_length=1, max_length=12000)
+
+
+class MentorSessionSummary(BaseModel):
+    id: str
+    current_problem: str
+    created_at: datetime
+    updated_at: datetime
+    completed: bool
+    challenge_rounds: int

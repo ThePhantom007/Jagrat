@@ -21,6 +21,18 @@ class Profile(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
 
+class ReflectionGoal(Base):
+    __tablename__ = "reflection_goals"
+    __table_args__ = (UniqueConstraint("profile_id", name="uq_reflection_goal_profile"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    profile_id: Mapped[str] = mapped_column(String(64), ForeignKey("profiles.id", ondelete="CASCADE"), index=True)
+    goal_key: Mapped[str] = mapped_column(String(60))
+    goal_text: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
 class Teaching(Base):
     __tablename__ = "teachings"
 
@@ -163,3 +175,53 @@ class WeeklyReport(Base):
     week_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     report_json: Mapped[dict] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class ReflectionFeedback(Base):
+    __tablename__ = "reflection_feedback"
+    __table_args__ = (UniqueConstraint("profile_id", "conversation_id", name="uq_feedback_profile_conversation"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    profile_id: Mapped[str] = mapped_column(String(64), ForeignKey("profiles.id", ondelete="CASCADE"), index=True)
+    conversation_id: Mapped[str] = mapped_column(String(36), ForeignKey("conversations.id", ondelete="CASCADE"), index=True)
+    helpful: Mapped[bool] = mapped_column(Boolean)
+    reason: Mapped[str | None] = mapped_column(String(120))
+    note: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+
+
+class ActionFollowUp(Base):
+    __tablename__ = "action_follow_ups"
+    __table_args__ = (UniqueConstraint("profile_id", "action_id", name="uq_followup_profile_action"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    profile_id: Mapped[str] = mapped_column(String(64), ForeignKey("profiles.id", ondelete="CASCADE"), index=True)
+    action_id: Mapped[str] = mapped_column(String(36), ForeignKey("action_items.id", ondelete="CASCADE"), index=True)
+    outcome: Mapped[str] = mapped_column(String(30))
+    note: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+
+
+class SavedTeaching(Base):
+    __tablename__ = "saved_teachings"
+    __table_args__ = (UniqueConstraint("profile_id", "teaching_id", name="uq_saved_profile_teaching"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    profile_id: Mapped[str] = mapped_column(String(64), ForeignKey("profiles.id", ondelete="CASCADE"), index=True)
+    teaching_id: Mapped[str] = mapped_column(String(100), ForeignKey("teachings.id", ondelete="CASCADE"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+
+
+class AIRequestTrace(Base):
+    __tablename__ = "ai_request_traces"
+
+    request_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    profile_id: Mapped[str] = mapped_column(String(64), ForeignKey("profiles.id", ondelete="CASCADE"), index=True)
+    conversation_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("conversations.id", ondelete="SET NULL"), index=True)
+    operation: Mapped[str] = mapped_column(String(50), index=True)
+    model: Mapped[str | None] = mapped_column(String(120))
+    candidate_ids: Mapped[list] = mapped_column(JSON, default=list)
+    selected_quote_id: Mapped[str | None] = mapped_column(String(100))
+    safety_status: Mapped[str | None] = mapped_column(String(30))
+    metadata_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)

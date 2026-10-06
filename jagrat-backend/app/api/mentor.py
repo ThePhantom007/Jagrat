@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_profile
 from app.db.session import get_db
 from app.models import ChallengeRound, Conversation, Message, Profile
-from app.schemas import ChallengeRequest, ChallengeResponse, MentorRequest, MentorResponse, SafetyResponse
+from app.schemas import ChallengeRequest, ChallengeResponse, MentorRequest, MentorResponse, SafetyResponse, MentorContinueRequest, MentorSessionSummary
 from app.services.gemini import GeminiService
 from app.services.mentor import MentorService, SourceGuardError
 from app.services.context import onboarding_complete
@@ -47,6 +47,44 @@ def mentor(payload: MentorRequest, db: Session = Depends(get_db), profile: Profi
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.post("/{conversation_id}/continue", response_model=MentorResponse | SafetyResponse)
+def continue_reflection(conversation_id: str, payload: MentorContinueRequest, db: Session = Depends(get_db), profile: Profile = Depends(get_profile)):
+    response = payload.message.strip()
+    local = local_risk_check(response)
+    if local and is_blocking(local.risk_level):
+        conversation = db.scalar(select(Conversation).where(Conversation.id == conversation_id, Conversation.profile_id == profile.id))
+        if conversation:
+            conversation.risk_flag = True
+            db.commit()
+        return safety_message()
+    try:
+        return service().continue_turn(db, profile.id, conversation_id, response)
+    except LookupError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except SourceGuardError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        if str(exc) == "SAFETY_TRIGGERED":
+            return safety_message()
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.get("/sessions", response_model=list[MentorSessionSummary])
+def sessions(status: str = "active", db: Session = Depends(get_db), profile: Profile = Depends(get_profile)):
+    rows = list(db.scalars(select(Conversation).where(Conversation.profile_id == profile.id).order_by(Conversation.updated_at.desc()).limit(100)).all())
+    if status == "active":
+        rows = [r for r in rows if r.completed_at is None and not r.risk_flag]
+    elif status == "completed":
+        rows = [r for r in rows if r.completed_at is not None]
+    elif status == "all":
+        pass
+    else:
+        raise HTTPException(status_code=422, detail="status must be active, completed, or all")
+    return [MentorSessionSummary(id=r.id, current_problem=r.current_problem, created_at=r.created_at, updated_at=r.updated_at, completed=r.completed_at is not None, challenge_rounds=r.rounds_used) for r in rows]
 
 
 @router.post("/{conversation_id}/challenge", response_model=ChallengeResponse | SafetyResponse)

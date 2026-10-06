@@ -5,7 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.models import InteractionRecord, JournalEntry, JournalInsight, Profile, Teaching, WeeklyCheckIn
+from app.models import InteractionRecord, JournalEntry, JournalInsight, Profile, ReflectionGoal, Teaching, WeeklyCheckIn
 
 DEMO_ENTRIES = [
     ("I studied for an exam today, but I kept comparing my progress with my friends.", ["comparison", "academic_pressure"], ["fear", "self_doubt"]),
@@ -38,6 +38,15 @@ def seed_demo(db: Session) -> None:
             },
         )
         db.add(profile)
+        db.flush()
+
+    has_goal = db.scalar(select(ReflectionGoal.id).where(ReflectionGoal.profile_id == profile.id).limit(1))
+    if has_goal is None:
+        db.add(ReflectionGoal(
+            profile_id=profile.id,
+            goal_key="discipline",
+            goal_text="Build more consistent study habits without overthinking every result.",
+        ))
         db.flush()
 
     has_journal = db.scalar(select(JournalEntry.id).where(JournalEntry.profile_id == profile.id).limit(1))
