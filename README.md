@@ -94,9 +94,42 @@ The importer deduplicates exact duplicate article records and preserves every un
 - Mentor reflections that fail during generation remain resumable/retryable; `POST /api/mentor/{conversation_id}/retry` retries the initial generation.
 - Canonical source sync is non-destructive. Missing/changed records are marked inactive; historical conversations and saved teachings are not physically deleted.
 - Demo seeding is opt-in (`SEED_DEMO_ON_STARTUP=false` by default). Render production configuration disables it.
-- Anonymous profiles use an opaque access token returned once by `POST /api/profile`. Send it using `X-Profile-Token: <token>` or `Authorization: Bearer <token>`. No password/login flow is required. Legacy `X-Profile-Id` access is disabled by default.
+- Persistent accounts are supported with `POST /api/auth/signup`, `POST /api/auth/login`, `GET /api/auth/me`, and `POST /api/auth/logout`. Auth uses opaque bearer/session tokens with configurable expiry; only token hashes are stored.
+- `POST /api/auth/change-password` updates the password and revokes all active sessions.
+- `POST /api/auth/claim` upgrades an existing anonymous `/api/profile` token into an email/password account without losing that profile's stored diary, mentor history, growth data, actions, saved teachings, feedback, and comparisons.
+- All user-owned records are keyed by `profile_id` with database foreign keys and cascading deletion. This includes onboarding/profile details, journal entries and insights, mentor conversations/messages/challenges/actions, Vivekananda-vs-Me comparisons, weekly check-ins/reports, reflection goals, saved teachings, feedback, action follow-ups, interaction records, and AI request traces.
+- The derived history endpoint is profile-scoped and can surface journal, mentor, action, Vivekananda-vs-Me, growth check-in, weekly report, saved teaching, and feedback records.
+- Anonymous profiles remain supported for migration/demo compatibility. Legacy `X-Profile-Id` access is disabled by default.
 - Mentor AI-written text is scanned for source attribution/long quoted text. A violating model response is discarded and a correction generation is attempted; if both fail, the user receives a 502 and no unsafe response is persisted.
 - If no sufficiently relevant canonical teaching is found, Mentor returns a normal response with `teaching: null` and an explicit Trust Panel note instead of raising an error or inventing a source.
+
+## Persistent account flow
+
+### Authentication flow
+
+Create a persistent account:
+
+```bash
+curl -X POST http://localhost:8000/api/auth/signup \
+  -H "Content-Type: application/json" \
+  -d '{"email":"you@example.com","password":"strongpass123","display_name":"You"}'
+```
+
+The response contains an `access_token`. Send it on every protected request:
+
+```text
+Authorization: Bearer <access_token>
+```
+
+After sign-up, save the six onboarding answers with `PUT /api/profile/onboarding`. Those answers remain part of the same `profile_id` that owns the rest of the user's records.
+
+Use `GET /api/auth/me` to load the signed-in profile and persisted-data counts. `POST /api/auth/logout` revokes the current session. `POST /api/auth/change-password` changes the password and revokes all sessions.
+
+### What is stored per profile
+
+The profile is the ownership boundary. The database stores onboarding/profile details, diary entries and AI insights, Mentor conversations/messages/challenge rounds, selected canonical teachings, actions and follow-ups, Vivekananda-vs-Me comparisons, weekly growth check-ins, weekly reports, reflection goals, saved teachings, feedback, interaction records, and AI request traces.
+
+The `/api/history` endpoint reconstructs a profile-scoped timeline from those persisted records; it does not use a shared/global history.
 
 ## Testing provider failures
 

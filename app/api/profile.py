@@ -14,7 +14,7 @@ router = APIRouter(prefix="/profile", tags=["profile"])
 
 @router.post("", response_model=ProfileCreateResponse, status_code=201)
 def create_profile(payload: ProfileCreateRequest, db: Session = Depends(get_db)):
-    """Create an anonymous profile secured by an opaque access token (no password/account flow)."""
+    """Create a lightweight anonymous profile. Use /api/auth/signup for persistent email/password accounts; /api/auth/claim can upgrade this profile without losing its stored history."""
     access_token = secrets.token_urlsafe(32)
     profile = Profile(
         id=str(uuid.uuid4()),
