@@ -11,8 +11,8 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./mentor.db"
     gemini_api_key: str = ""
     # Both defaults are available on the Gemini Developer API's standard free tier.
-    gemini_model: str = "gemini-3.8-flash"
-    gemini_fast_model: str = "gemini-3.1-flash-lite"
+    gemini_model: str = "gemini-3.5-flash"
+    gemini_fast_model: str = "gemini-3.5-flash-lite"
     gemini_timeout_seconds: int = 60
     cors_origins: Annotated[list[str], NoDecode] = ["http://localhost:3000", "http://localhost:5173"]
     demo_user_id: str = "demo"
@@ -25,6 +25,8 @@ class Settings(BaseSettings):
     teachings_json_path: str = "data/articles.json"
     demo_mode: bool = False
     allow_legacy_profile_id: bool = False
+    auth_session_days: int = 30
+    password_hash_iterations: int = 600000
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
