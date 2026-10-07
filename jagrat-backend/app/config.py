@@ -25,6 +25,8 @@ class Settings(BaseSettings):
     teachings_json_path: str = "data/articles.json"
     demo_mode: bool = False
     allow_legacy_profile_id: bool = False
+    auth_session_days: int = 30
+    password_hash_iterations: int = 600000
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

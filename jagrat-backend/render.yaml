@@ -30,6 +30,10 @@ services:
         value: "false"
       - key: ALLOW_LEGACY_PROFILE_ID
         value: "false"
+      - key: AUTH_SESSION_DAYS
+        value: "30"
+      - key: PASSWORD_HASH_ITERATIONS
+        value: "600000"
       - key: SEED_DEMO_ON_STARTUP
         value: "false"
       - key: AUTO_INGEST_TEACHINGS

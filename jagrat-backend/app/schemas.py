@@ -4,6 +4,53 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 
+class SignupRequest(BaseModel):
+    email: str = Field(min_length=5, max_length=320)
+    password: str = Field(min_length=8, max_length=128)
+    display_name: str = Field(min_length=1, max_length=120)
+
+
+class LoginRequest(BaseModel):
+    email: str = Field(min_length=5, max_length=320)
+    password: str = Field(min_length=1, max_length=128)
+
+
+class ClaimProfileRequest(BaseModel):
+    email: str = Field(min_length=5, max_length=320)
+    password: str = Field(min_length=8, max_length=128)
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str = Field(min_length=1, max_length=128)
+    new_password: str = Field(min_length=8, max_length=128)
+
+
+class ProfileSnapshot(BaseModel):
+    id: str
+    display_name: str
+    email: str
+    answers: dict
+    created_at: datetime
+    updated_at: datetime
+
+
+class AuthResponse(BaseModel):
+    access_token: str
+    token_type: Literal["bearer"] = "bearer"
+    account_id: str
+    profile: ProfileSnapshot
+
+
+class AuthMeResponse(BaseModel):
+    account_id: str
+    profile: ProfileSnapshot
+    storage: dict[str, int]
+
+
+class LogoutResponse(BaseModel):
+    logged_out: bool
+
+
 class ProfileCreateRequest(BaseModel):
     display_name: str = Field(min_length=1, max_length=120)
 

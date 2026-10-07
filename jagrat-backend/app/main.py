@@ -3,7 +3,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import get_settings
 from app.api import vs_me
-from app.api import health, profile, journal, mentor, actions, growth, reports, teachings, history, journey, honesty, features
+from app.api import auth, health, profile, journal, mentor, actions, growth, reports, teachings, history, journey, honesty, features
 
 
 @asynccontextmanager
@@ -14,7 +14,7 @@ async def lifespan(app: FastAPI):
 
 
 settings = get_settings()
-app = FastAPI(title=settings.app_name, version="1.1.0", lifespan=lifespan)
+app = FastAPI(title=settings.app_name, version="1.2.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
@@ -24,5 +24,5 @@ app.add_middleware(
 )
 
 app.include_router(health.router)
-for router in [profile.router, journal.router, features.router, mentor.router, vs_me.router, actions.router, growth.router, reports.router, teachings.router, history.router, journey.router, honesty.router]:
+for router in [auth.router, profile.router, journal.router, features.router, mentor.router, vs_me.router, actions.router, growth.router, reports.router, teachings.router, history.router, journey.router, honesty.router]:
     app.include_router(router, prefix="/api")

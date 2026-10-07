@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_profile
 from app.db.session import get_db
-from app.models import ActionFollowUp, ActionItem, Conversation, JournalEntry, Profile, VivekanandaComparison, Teaching
+from app.models import ActionFollowUp, ActionItem, Conversation, JournalEntry, Profile, VivekanandaComparison, Teaching, WeeklyCheckIn, WeeklyReport, SavedTeaching, ReflectionFeedback
 from app.schemas import HistoryItem, HistoryResponse
 
 router = APIRouter(prefix="/history", tags=["history"] )
@@ -43,6 +43,38 @@ def history(limit: int = 50, item_type: str | None = None, q: str | None = None,
             select(VivekanandaComparison)
             .where(VivekanandaComparison.profile_id == profile.id)
             .order_by(VivekanandaComparison.created_at.desc())
+            .limit(limit)
+        ).all()
+    )
+    checkins = list(
+        db.scalars(
+            select(WeeklyCheckIn)
+            .where(WeeklyCheckIn.profile_id == profile.id)
+            .order_by(WeeklyCheckIn.created_at.desc())
+            .limit(limit)
+        ).all()
+    )
+    reports = list(
+        db.scalars(
+            select(WeeklyReport)
+            .where(WeeklyReport.profile_id == profile.id)
+            .order_by(WeeklyReport.created_at.desc())
+            .limit(limit)
+        ).all()
+    )
+    saved = list(
+        db.scalars(
+            select(SavedTeaching)
+            .where(SavedTeaching.profile_id == profile.id)
+            .order_by(SavedTeaching.created_at.desc())
+            .limit(limit)
+        ).all()
+    )
+    feedback_rows = list(
+        db.scalars(
+            select(ReflectionFeedback)
+            .where(ReflectionFeedback.profile_id == profile.id)
+            .order_by(ReflectionFeedback.created_at.desc())
             .limit(limit)
         ).all()
     )
@@ -130,15 +162,77 @@ def history(limit: int = 50, item_type: str | None = None, q: str | None = None,
             )
         )
 
+    for checkin in checkins:
+        items.append(
+            HistoryItem(
+                id=checkin.id,
+                type="growth_checkin",
+                created_at=checkin.created_at,
+                title="Weekly growth check-in",
+                summary="Self-reported five-factor check-in",
+                data={
+                    "week_start": checkin.week_start,
+                    "self_belief": checkin.self_belief,
+                    "fear": checkin.fear,
+                    "discipline": checkin.discipline,
+                    "clarity": checkin.clarity,
+                    "resilience": checkin.resilience,
+                    "note": checkin.note,
+                },
+            )
+        )
+
+    for report in reports:
+        items.append(
+            HistoryItem(
+                id=report.id,
+                type="weekly_report",
+                created_at=report.created_at,
+                title="Weekly growth report",
+                summary="Generated from stored activity and check-in evidence",
+                data={"week_start": report.week_start, "report": report.report_json},
+            )
+        )
+
+    for saved_row in saved:
+        teaching = db.get(Teaching, saved_row.teaching_id)
+        items.append(
+            HistoryItem(
+                id=saved_row.id,
+                type="saved_teaching",
+                created_at=saved_row.created_at,
+                title="Saved teaching",
+                summary=teaching.source_title if teaching else "Saved teaching",
+                data={"teaching_id": saved_row.teaching_id, "quote": teaching.quote if teaching else None},
+            )
+        )
+
+    for feedback in feedback_rows:
+        items.append(
+            HistoryItem(
+                id=feedback.id,
+                type="feedback",
+                created_at=feedback.created_at,
+                title="Reflection feedback",
+                summary="Helpful" if feedback.helpful else "Not helpful",
+                data={
+                    "conversation_id": feedback.conversation_id,
+                    "helpful": feedback.helpful,
+                    "reason": feedback.reason,
+                    "note": feedback.note,
+                },
+            )
+        )
+
     items.sort(key=lambda item: item.created_at, reverse=True)
 
     normalized_q = q.strip().lower() if q else None
     normalized_theme = theme.strip().lower().replace("-", "_") if theme else None
     if item_type:
-        allowed = {"journal", "mentor", "action", "vivekananda_vs_me"}
+        allowed = {"journal", "mentor", "action", "vivekananda_vs_me", "growth_checkin", "weekly_report", "saved_teaching", "feedback"}
         if item_type not in allowed:
             from fastapi import HTTPException
-            raise HTTPException(status_code=422, detail="item_type must be journal, mentor, action, or vivekananda_vs_me")
+            raise HTTPException(status_code=422, detail="item_type must be journal, mentor, action, vivekananda_vs_me, growth_checkin, weekly_report, saved_teaching, or feedback")
         items = [item for item in items if item.type == item_type]
     if normalized_q:
         items = [item for item in items if normalized_q in (item.title + " " + item.summary + " " + str(item.data)).lower()]
