@@ -1,0 +1,214 @@
+/* ─────────────────────────────────────────────────────────────
+   JAGRAT — Design Tokens: Nurturing Saffron
+   Master plan Appendix A.1 (canonical)
+───────────────────────────────────────────────────────────── */
+@import "tailwindcss";
+@import "./ambient.css";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  /* Background gradient (peach-cream, deeper toward bottom-right) */
+  --bg-from: #FFF7EA;
+  --bg-mid:  #FDE6CF;
+  --bg-to:   #F8C9A2;
+
+  /* Glass surfaces */
+  --card-surface:  rgba(255, 249, 240, 0.72);
+  --card-solid:    #FBF1E3;
+  --card-border:   rgba(234, 120, 60, 0.22);
+  --card-shadow:   0 10px 40px -12px rgba(190, 100, 50, 0.28);
+  --input-surface: #F6EDE0;
+  --pill-surface:  #F7E6D0;
+
+  /* Text */
+  --text-primary: #2B1D14;
+  --text-muted:   #6F5E52;
+
+  /* Saffron */
+  --saffron:        #E8662E;
+  --saffron-hover:  #D4561F;
+  --saffron-strong: #C24A17;   /* small orange text on cream, 4.6:1 */
+  --on-saffron:     #FFFFFF;   /* text on saffron fills; use 18px+ semibold */
+  --saffron-soft:   #FBD9BE;
+  --saffron-glow:   rgba(232, 102, 46, 0.18);
+
+  /* Decoration */
+  --sun-ray:    #F0B48A;
+  --om-color:   #C9784A;
+  --om-opacity: 0.07;
+
+  /* Semantic */
+  --tag-bg:  #C9583A;
+  --up:      #3F7D4E;
+  --down:    #D2452F;
+  --steady:  #E8662E;
+
+  /* Legacy compat — referenced by existing components during migration */
+  --bg-base:         var(--bg-from);
+  --bg-secondary:    var(--bg-mid);
+  --saffron-primary: var(--saffron);
+  --gold-accent:     #F59E0B;
+  --gold-soft:       rgba(245, 158, 11, 0.15);
+  --slate-accent:    #64748B;
+  --slate-soft:      rgba(100, 116, 139, 0.12);
+  --text-subtle:     var(--text-muted);
+  --success:         #3F7D4E;
+  --danger:          #D2452F;
+  --navbar-bg:       rgba(255, 247, 234, 0.80);
+  --scrollbar-thumb: rgba(232, 102, 46, 0.4);
+  --shadow-card:     var(--card-shadow);
+  --shadow-float:    0 8px 40px -12px rgba(190, 100, 50, 0.35);
+}
+
+.dark {
+  --bg-from: #0B0D13;
+  --bg-mid:  #10131C;
+  --bg-to:   #161A26;
+
+  --card-surface:  rgba(17, 24, 39, 0.78);
+  --card-solid:    #141A27;
+  --card-border:   rgba(245, 158, 11, 0.25);
+  --card-shadow:   0 10px 40px -12px rgba(0, 0, 0, 0.6);
+  --input-surface: #121826;
+  --pill-surface:  #1B2232;
+
+  --text-primary: #F3F4F6;
+  --text-muted:   #9CA3AF;
+
+  --saffron:        #FF7A00;
+  --saffron-hover:  #FF9432;
+  --saffron-strong: #FFB066;
+  --on-saffron:     #1B1007;   /* DARK text on bright orange: white would be only ~2.6:1 */
+  --saffron-soft:   #3A2412;
+  --saffron-glow:   rgba(255, 122, 0, 0.2);
+
+  --sun-ray:    #F59E0B;
+  --om-color:   #F59E0B;
+  --om-opacity: 0.06;
+
+  --tag-bg: #B4532F;
+  --up:     #6FCF8B;
+  --down:   #FF7B6B;
+
+  /* Legacy compat */
+  --bg-base:         var(--bg-from);
+  --bg-secondary:    var(--bg-mid);
+  --saffron-primary: var(--saffron);
+  --gold-accent:     #FBBF24;
+  --gold-soft:       rgba(251, 191, 36, 0.12);
+  --slate-accent:    #94A3B8;
+  --slate-soft:      rgba(148, 163, 184, 0.10);
+  --text-subtle:     var(--text-muted);
+  --success:         #6FCF8B;
+  --danger:          #FF7B6B;
+  --navbar-bg:       rgba(11, 13, 19, 0.85);
+  --scrollbar-thumb: rgba(255, 122, 0, 0.35);
+  --shadow-card:     var(--card-shadow);
+  --shadow-float:    0 8px 40px -12px rgba(0, 0, 0, 0.5);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Tailwind v4 Theme
+───────────────────────────────────────────────────────────── */
+@theme inline {
+  --color-saffron: var(--saffron);
+  --color-saffron-strong: var(--saffron-strong);
+  --color-on-saffron: var(--on-saffron);
+  --color-card: var(--card-surface);
+  --color-ink: var(--text-primary);
+  --color-muted: var(--text-muted);
+  --color-background: var(--bg-from);
+  --color-foreground: var(--text-primary);
+  --font-ui: var(--font-jakarta), system-ui, sans-serif;
+  --font-scripture: var(--font-playfair), Georgia, serif;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Base Styles
+───────────────────────────────────────────────────────────── */
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: linear-gradient(160deg, var(--bg-from) 0%, var(--bg-mid) 55%, var(--bg-to) 100%);
+  background-attachment: fixed;
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Typography
+───────────────────────────────────────────────────────────── */
+.font-scripture {
+  font-family: var(--font-scripture);
+}
+
+.font-ui {
+  font-family: var(--font-ui);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Custom Scrollbars
+───────────────────────────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--saffron);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Glass Morphism Utility
+───────────────────────────────────────────────────────────── */
+.glass {
+  background: var(--card-surface);
+  backdrop-filter: blur(14px) saturate(180%);
+  -webkit-backdrop-filter: blur(14px) saturate(180%);
+  border: 1px solid var(--card-border);
+}
+
+@supports not (backdrop-filter: blur(1px)) {
+  .glass {
+    background: var(--card-solid);
+  }
+}
+
+.glass-nav {
+  background: var(--navbar-bg);
+  backdrop-filter: blur(20px) saturate(200%);
+  -webkit-backdrop-filter: blur(20px) saturate(200%);
+  border-bottom: 1px solid var(--card-border);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Saffron Glow Effects
+───────────────────────────────────────────────────────────── */
+.saffron-glow {
+  box-shadow: 0 0 20px var(--saffron-glow), var(--card-shadow);
+}
+
+.saffron-glow-ring {
+  outline: 2px solid var(--saffron);
+  outline-offset: 2px;
+  box-shadow: 0 0 12px var(--saffron-glow);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Selection Color
+───────────────────────────────────────────────────────────── */
+::selection {
+  background: var(--saffron-glow);
+  color: var(--text-primary);
+}

@@ -1,0 +1,17 @@
+# Jagrat — Project Rules
+- Stack: Next.js 16 App Router, TypeScript, Tailwind v4, framer-motion, lucide-react. No other UI kits.
+- Visual identity: peach-cream gradient, saffron accents, glass cards. Use CSS variables from globals.css only; never hard-code hex colors in components.
+- Background: translucent Om at center, sun bursts in corners, a few sparkles. NEVER add floral, lotus, mandala, paisley or petal ornaments or icons.
+- The public Quote Verifier is permanently removed. Do not create /verify, a verifier component, or verifier copy. The server-side quote guard and data/corpus.json STAY: Layer 2 quotes may only come from the corpus through the guard. The "Source verified" badge on a quote is allowed.
+- If no corpus quote fits, render the no-match card. Never fill Layer 2 with an LLM-written or remembered quote.
+- Build into the existing starter; do not re-scaffold or change framework versions. Fonts are self-hosted; the build must work offline.
+- Never claim to be Swami Vivekananda; never synthesize or imply his voice (no recording of it exists). SpeechButton reads text in a neutral device voice only.
+- Fonts: Plus Jakarta Sans for UI. Playfair Display ONLY for verbatim Vivekananda quotations.
+- Chat response = three stacked cards: Listening, Documented Teaching, AI Reflection (labelled "AI Reflection — Not Swami Vivekananda") + "Your Next Step" callout.
+- Never invent quotes or citations in components. All quotes/sources come from lib/api or lib/mock (mock files are labelled DEMO DATA).
+- Primary buttons: 18px+ semibold, text color var(--on-saffron) (dark text in dark mode). Small orange text uses --saffron-strong.
+- Background components come from Appendix A of the master plan and must not be redrawn or altered.
+- All user-facing strings go through lib/i18n.ts. EN and HI are complete; other languages fall back to English.
+- Respect prefers-reduced-motion. Keyboard + screen reader support required. Mobile-first (360px).
+- Crisis responses must show Tele-MANAS 14416.
+- Keep components small and typed; no `any`. Run lint + typecheck + build before finishing a task.

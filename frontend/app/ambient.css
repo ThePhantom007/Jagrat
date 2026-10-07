@@ -1,0 +1,56 @@
+/* Imported from app/globals.css */
+.jg-ambient {
+  position: fixed;
+  inset: 0;
+  z-index: -10;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.jg-om {
+  position: absolute;
+  left: 50%;
+  top: 46%;
+  width: min(85vw, 620px);
+  transform: translate(-50%, -50%);
+  fill: var(--om-color);
+  opacity: var(--om-opacity);
+}
+@media (min-width: 768px) {
+  .jg-om { width: min(70vw, 620px); }
+}
+
+.jg-sun { position: absolute; }
+.jg-sun-tl { top: 0; left: 0;  transform: translate(-50%, -50%); }
+.jg-sun-tr { top: 0; right: 0; transform: translate(50%, -50%); }
+.jg-sun-bl { bottom: 0; left: 0;  transform: translate(-50%, 50%); }
+.jg-sun-br { bottom: 0; right: 0; transform: translate(50%, 50%); }
+
+.jg-sun-disc { fill: var(--saffron-soft); opacity: 0.55; }
+.jg-sun-rays line {
+  stroke: var(--sun-ray);
+  stroke-width: 5;
+  stroke-linecap: round;
+  opacity: 0.5;
+}
+.dark .jg-sun-disc { opacity: 0.25; }
+.dark .jg-sun-rays line { opacity: 0.14; }
+
+@media (max-width: 767px) {
+  .jg-desktop-only { display: none; }
+  .jg-sun-rays line { stroke-width: 4; }
+}
+
+.jg-sparkle {
+  position: absolute;
+  fill: var(--saffron);
+  opacity: 0.55;
+  animation: jg-twinkle 5s ease-in-out infinite;
+}
+@keyframes jg-twinkle {
+  0%, 100% { opacity: 0.35; transform: scale(0.9); }
+  50%      { opacity: 0.9;  transform: scale(1.05); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .jg-sparkle { animation: none; opacity: 0.5; }
+}

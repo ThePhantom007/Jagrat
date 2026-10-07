@@ -1,0 +1,62 @@
+{
+  "name": "Jagrat — The Awakened",
+  "short_name": "Jagrat",
+  "description": "AI-powered reflection guided by the philosophy of Swami Vivekananda.",
+  "start_url": "/app/chat",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#FFF8DF",
+  "theme_color": "#FC6C26",
+  "lang": "en",
+  "categories": ["education", "lifestyle", "productivity"],
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "screenshots": [],
+  "shortcuts": [
+    {
+      "name": "Mentor Chat",
+      "short_name": "Chat",
+      "description": "Open the Mentor Chat",
+      "url": "/app/chat",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "My Journal",
+      "short_name": "Journal",
+      "description": "Open the Journal",
+      "url": "/app/journal",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Growth Journey",
+      "short_name": "Growth",
+      "description": "View your Growth Dashboard",
+      "url": "/app/growth",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    }
+  ]
+}
